@@ -123,8 +123,38 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* En móvil el highlight por defecto al tocar controles se ve sucio sobre
+       las tarjetas; la app marca el foco con sus propios estados. */
+    -webkit-tap-highlight-color: transparent;
   }
   html {
     @apply font-sans;
+    /* iOS agranda el texto al girar el dispositivo; se fija el tamaño real para
+       que los breakpoints mobile-first se respeten. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/*
+ * Ajustes para punteros gruesos (dedos). Van FUERA de @layer a propósito: en la
+ * cascada, las reglas sin capa ganan a las utilidades de Tailwind (que viven en
+ * @layer utilities), así que permiten agrandar controles generados por shadcn
+ * (Select) sin editar components/ui/*, y quedan inactivas en desktop (puntero fino).
+ */
+@media (pointer: coarse) {
+  /* Filas del select de vehículo: 44px de alto mínimo recomendado para tocar
+     (el valor por defecto de shadcn es py-1 -> ~28px). */
+  [data-slot="select-item"] {
+    padding-block: 0.625rem;
+    padding-inline-start: 0.625rem;
+  }
+
+  /* Botones de zoom de Leaflet: 30px por defecto, más fáciles de acertar con el dedo.
+     El selector incluye .leaflet-container para ganar en especificidad al CSS de Leaflet. */
+  .leaflet-container.leaflet-touch .leaflet-bar a {
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
   }
 }

@@ -186,7 +186,7 @@ function AddressAutocomplete({
           value={value}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          className="pr-9"
+          className="min-h-11 pr-9 md:min-h-0"
           required
         />
 
@@ -199,7 +199,7 @@ function AddressAutocomplete({
             id={listboxId}
             role="listbox"
             aria-label={`Sugerencias para ${label}`}
-            className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+            className="absolute top-full left-0 right-0 z-50 mt-1 max-h-[min(50dvh,17.5rem)] overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
           >
             {results.map((suggestion, index) => (
               <li
@@ -211,7 +211,8 @@ function AddressAutocomplete({
                 onClick={() => selectSuggestion(suggestion)}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={cn(
-                  "cursor-pointer rounded-md px-2 py-1.5",
+                  // min-h-11 = 44px: alto mínimo recomendado para acertar con el dedo.
+                  "min-h-11 cursor-pointer touch-manipulation rounded-md px-3 py-2.5",
                   index === activeIndex && "bg-accent text-accent-foreground"
                 )}
               >
@@ -284,7 +285,10 @@ export default function QuoteForm({ onCoordsChange }: QuoteFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 rounded-xl border border-border p-6 shadow-sm bg-card">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:space-y-6 sm:p-5 md:p-6"
+    >
       <div className="space-y-4">
         <AddressAutocomplete
           id="origin"
@@ -304,21 +308,26 @@ export default function QuoteForm({ onCoordsChange }: QuoteFormProps) {
           onSelect={handleDestinationSelect}
         />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="grid min-w-0 gap-2">
             <Label htmlFor="passengers">Pasajeros</Label>
+            {/* inputMode numérico: en móvil abre el teclado de dígitos en vez del
+                alfanumérico. min-h-11 = 44px táctil; en md vuelve al alto compacto. */}
             <Input
               id="passengers"
               type="number"
+              inputMode="numeric"
+              enterKeyHint="done"
               min={1}
               max={6}
               value={formData.passengers}
               onChange={(e) => setFormData({ ...formData, passengers: parseInt(e.target.value) || 1 })}
+              className="min-h-11 md:min-h-0"
               required
             />
           </div>
 
-          <div className="grid gap-2">
+          <div className="grid min-w-0 gap-2">
             <Label htmlFor="vehicle">Vehículo</Label>
             <Select
               value={formData.vehicleType}
@@ -329,7 +338,13 @@ export default function QuoteForm({ onCoordsChange }: QuoteFormProps) {
                 }
               }}
             >
-              <SelectTrigger id="vehicle">
+              {/* w-full + min-h-11: el trigger de shadcn es w-fit/h-8, demasiado
+                  pequeño para tocar con el dedo. text-base evita el zoom automático
+                  de iOS al enfocar (un control de <16px hace que Safari haga zoom). */}
+              <SelectTrigger
+                id="vehicle"
+                className="w-full min-h-11 text-base md:min-h-0 md:text-sm"
+              >
                 <SelectValue placeholder="Tipo de vehículo" />
               </SelectTrigger>
               <SelectContent>
@@ -343,7 +358,7 @@ export default function QuoteForm({ onCoordsChange }: QuoteFormProps) {
         </div>
       </div>
 
-      <Button type="submit" className="w-full">
+      <Button type="submit" size="lg" className="min-h-12 w-full text-base md:min-h-0 md:text-sm">
         Calcular precio
       </Button>
     </form>
