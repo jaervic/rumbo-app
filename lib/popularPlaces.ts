@@ -23,6 +23,8 @@
  * (qué escriben de verdad los usuarios y qué eligen de la lista de sugerencias).
  */
 
+import { distanceKm, type GeoPoint } from "./distance";
+
 export type PopularPlaceType =
   | "mall"
   | "airport"
@@ -127,20 +129,43 @@ function normalizeForSearch(value: string): string {
     .trim();
 }
 
+/** Opciones de búsqueda en la lista local. */
+export interface SearchPopularPlacesOptions {
+  /**
+   * Ubicación del usuario (GPS). Si viene, las coincidencias con la misma relevancia se
+   * ordenan por cercanía: la lista curada está pensada para Caracas y, con el usuario en
+   * otra ciudad, la sede más cercana debe ir delante.
+   */
+  userLocation?: GeoPoint;
+}
+
 /**
  * Busca en la lista local de lugares populares.
  * Coincide si el nombre, el nombre corto o algún alias EMPIEZA por la consulta.
- * Ordena primero las coincidencias exactas y, entre iguales, el orden de la lista
- * curada (que es su orden de popularidad).
+ *
+ * Orden: 1) con `userLocation`, el más cercano (todas las coincidencias de esta lista son
+ * del mismo tipo: coinciden por prefijo); 2) coincidencia exacta de nombre/alias; 3) orden de
+ * la lista curada (= orden de popularidad).
+ *
+ * Nota: la cercanía va ANTES de "coincidencia exacta" a propósito. Si mandara el alias exacto,
+ * "sambil" con GPS en Lechería seguiría poniendo primero el Sambil Chacao (su alias es
+ * exactamente "sambil") en vez del Sambil más cercano, que es justo lo que esta fase evita.
  *
  * @param query Texto escrito por el usuario (ej: "el marq", "ccct", "maiquetia").
+ * @param options Ubicación del usuario para ordenar por cercanía (opcional).
  * @returns Hasta MAX_POPULAR_RESULTS lugares.
  */
-export function searchPopularPlaces(query: string): PopularPlace[] {
+export function searchPopularPlaces(
+  query: string,
+  options: SearchPopularPlacesOptions = {}
+): PopularPlace[] {
   const needle = normalizeForSearch(query);
   if (needle.length === 0) return [];
 
-  const matches: { place: PopularPlace; index: number; isExact: boolean }[] = [];
+  const { userLocation } = options;
+
+  const matches: { place: PopularPlace; index: number; isExact: boolean; distanceKm: number }[] =
+    [];
 
   POPULAR_PLACES.forEach((place, index) => {
     const fields = [place.name, place.shortName, ...place.aliases].map(normalizeForSearch);
@@ -151,11 +176,27 @@ export function searchPopularPlaces(query: string): PopularPlace[] {
       place,
       index,
       isExact: fields.some((field) => field === needle),
+      distanceKm:
+        userLocation === undefined
+          ? 0
+          : distanceKm(userLocation.lat, userLocation.lng, place.lat, place.lng),
     });
   });
 
   return matches
-    .sort((a, b) => Number(b.isExact) - Number(a.isExact) || a.index - b.index)
+    .sort((a, b) => {
+      // 1) Ubicación conocida: primero lo más cercano (objetivo de la Fase 3.5g).
+      if (userLocation !== undefined) {
+        const byDistance = a.distanceKm - b.distanceKm;
+        if (byDistance !== 0) return byDistance;
+      }
+
+      // 2) Sin ubicación (o empate exacto de distancia): coincidencia exacta primero.
+      if (a.isExact !== b.isExact) return Number(b.isExact) - Number(a.isExact);
+
+      // 3) Orden curado (popularidad), igual que sin ubicación.
+      return a.index - b.index;
+    })
     .slice(0, MAX_POPULAR_RESULTS)
     .map((match) => match.place);
 }

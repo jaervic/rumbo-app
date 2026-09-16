@@ -158,3 +158,33 @@
     line-height: 36px;
   }
 }
+
+/*
+ * Marcador de la ubicación del usuario en el mapa (Fase 3.7): anillo que se expande y se
+ * desvanece detrás del punto azul.
+ *
+ * Vive aquí y no en un <style> del componente porque el HTML del DivIcon de Leaflet es una
+ * cadena de texto: necesita una clase real definida en la hoja de estilos.
+ */
+@keyframes map-user-pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.map-user-pulse {
+  animation: map-user-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Quien pidió menos movimiento en su sistema no ve la animación, pero sí el anillo. */
+@media (prefers-reduced-motion: reduce) {
+  .map-user-pulse {
+    animation: none;
+    opacity: 0.35;
+  }
+}

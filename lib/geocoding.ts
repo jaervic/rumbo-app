@@ -17,6 +17,7 @@
 
 import { searchPopularPlaces, PopularPlace } from "./popularPlaces";
 import { createRateLimiter } from "./rateLimiter";
+import { distanceKm, distanceMeters, type GeoPoint } from "./distance";
 
 export interface GeocodeResult {
   lat: number;
@@ -50,14 +51,14 @@ const PHOTON_API_URL = "https://photon.komoot.io/api/";
 /** bbox de Venezuela para Photon: minLon,minLat,maxLon,maxLat. */
 const VENEZUELA_BBOX = "-73.5,0.6,-59.5,12.5";
 /**
- * Punto de sesgo geográfico: centro de Caracas. Photon prioriza los resultados cercanos
- * a este punto, que es donde se concentra la población y la operación inicial de la app.
+ * Punto de sesgo geográfico por defecto: centro de Caracas. Photon prioriza los resultados
+ * cercanos a este punto, que es donde se concentra la población y la operación inicial.
  *
- * TODO (fase de geolocalización): reemplazar este punto fijo por la posición real del
- * usuario (`navigator.geolocation`) en lugar del centro de Caracas.
+ * Fase 3.5g: si el usuario comparte su ubicación (botón "Usar mi ubicación actual"), su
+ * posición sustituye a este punto tanto en el sesgo de Photon como en el orden de la lista
+ * local. Sin permiso, se mantiene Caracas (comportamiento anterior).
  */
-const BIAS_LATITUDE = "10.48";
-const BIAS_LONGITUDE = "-66.90";
+const DEFAULT_BIAS: GeoPoint = { lat: 10.48, lng: -66.9 };
 const USER_AGENT = "cotizador-transporte/0.1 (dev)";
 
 /** Intervalo mínimo entre peticiones reales a Photon (1 req/seg). */
@@ -151,6 +152,15 @@ const SCORE_COMMERCIAL_BOOST = 25;
 const SCORE_LOCATION_TOKEN_BONUS = 30;
 
 /**
+ * Boost por cercanía al usuario, en dos umbrales (km). Ver cómo se aplica en
+ * scoreAndSortResults: NO se suma al score, se usa como clave secundaria de orden.
+ */
+const SCORE_PROXIMITY_CLOSE = 25;
+const SCORE_PROXIMITY_NEAR = 15;
+const PROXIMITY_CLOSE_KM = 5;
+const PROXIMITY_NEAR_KM = 10;
+
+/**
  * TODO (fase de geolocalización): sustituir el sesgo fijo de Caracas (BIAS_LATITUDE /
  * BIAS_LONGITUDE, ya enviado a Photon) por la posición real del usuario y, si hace falta,
  * sumar aquí un bonus por distancia (haversine) en vez del boost fijo por estado.
@@ -185,12 +195,21 @@ function isCommercialPlace(result: GeocodeResult): boolean {
  *   aparezca en la calle/urbanización/ciudad/estado del resultado: es lo que desempata
  *   entre sedes de una misma cadena, donde el nombre no puede ayudar (ver
  *   SCORE_LOCATION_TOKEN_BONUS).
+ * - Con `userLocation`, y SOLO como segunda clave de orden, +25 si el resultado está a
+ *   menos de 5 km y +15 si está a menos de 10 km. La cercanía desempata, no suma puntos:
+ *   sumarlos permitiría a un resultado cercano con peor coincidencia de nombre adelantar a
+ *   uno con coincidencia de prefijo o con el boost de región central, que es justo lo que
+ *   la fase pide evitar. Photon ya aplica el sesgo geográfico en su propio orden.
  *
  * Los empates conservan el orden original de Photon (que ya aplica su propio score y
  * recibe el sesgo de Caracas); el desempate se hace por índice, así no dependemos de
  * la estabilidad de Array#sort.
  */
-function scoreAndSortResults(results: GeocodeResult[], query: string): GeocodeResult[] {
+function scoreAndSortResults(
+  results: GeocodeResult[],
+  query: string,
+  userLocation?: GeoPoint
+): GeocodeResult[] {
   const needle = normalize(query);
   if (needle.length === 0) return [...results];
 
@@ -224,9 +243,27 @@ function scoreAndSortResults(results: GeocodeResult[], query: string): GeocodeRe
     );
   };
 
+  const proximityBonusOf = (result: GeocodeResult): number => {
+    if (userLocation === undefined) return 0;
+
+    const km = distanceKm(userLocation.lat, userLocation.lng, result.lat, result.lng);
+    if (km < PROXIMITY_CLOSE_KM) return SCORE_PROXIMITY_CLOSE;
+    if (km < PROXIMITY_NEAR_KM) return SCORE_PROXIMITY_NEAR;
+
+    return 0;
+  };
+
   return results
-    .map((result, index) => ({ result, index, score: scoreOf(result) }))
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((result, index) => ({
+      result,
+      index,
+      score: scoreOf(result),
+      proximityBonus: proximityBonusOf(result),
+    }))
+    // `score` manda; la cercanía solo desempata (ver el doc de la función).
+    .sort(
+      (a, b) => b.score - a.score || b.proximityBonus - a.proximityBonus || a.index - b.index
+    )
     .map((entry) => entry.result);
 }
 
@@ -275,6 +312,11 @@ function buildDisplayName(name: string, locality: PhotonLocality): string {
   return place.length > 0 ? `${name} — ${place}` : name;
 }
 
+/** Objeto plano no nulo: evita `any` al leer JSON de una API externa. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Lee una propiedad de texto de un objeto JSON desconocido (sin `any`). */
 function readString(source: Record<string, unknown>, key: string): string {
   const value = source[key];
@@ -311,15 +353,22 @@ function isPhotonFeature(
  * POIs ("sambil" -> Centros Comerciales Sambil). Las coordenadas llegan como
  * [lng, lat] (¡al revés que el resto de la app!) y se normalizan aquí.
  */
-async function fetchPhotonPlaces(query: string, limit: number): Promise<GeocodeResult[]> {
+async function fetchPhotonPlaces(
+  query: string,
+  limit: number,
+  bias: GeoPoint | undefined
+): Promise<GeocodeResult[]> {
   try {
     const url = new URL(PHOTON_API_URL);
     url.searchParams.set("q", query);
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("bbox", VENEZUELA_BBOX);
-    // Sesgo hacia Caracas: Photon prioriza lo cercano a este punto (ver BIAS_LATITUDE).
-    url.searchParams.set("lat", BIAS_LATITUDE);
-    url.searchParams.set("lon", BIAS_LONGITUDE);
+    // Sesgo geográfico: la ubicación real del usuario si la compartió y, si no, Caracas.
+    // Photon PRIORIZA lo cercano a este punto, no filtra: los resultados lejanos siguen
+    // apareciendo, así que una ubicación imprecisa (IP/Wi-Fi en desktop) no oculta nada.
+    const { lat, lng } = bias ?? DEFAULT_BIAS;
+    url.searchParams.set("lat", String(lat));
+    url.searchParams.set("lon", String(lng));
     // Sin `lang`: Photon no soporta `es` (HTTP 400) y el valor por defecto ya
     // devuelve el nombre local, que para Venezuela está en español.
 
@@ -391,63 +440,64 @@ async function fetchPhotonPlaces(query: string, limit: number): Promise<GeocodeR
 }
 
 /**
- * Envuelve el buscador con: longitud mínima de consulta, cache por consulta exacta
- * (incluye "sin resultados"), dedupe de peticiones en vuelo y limitador de tasa.
+ * Clave del sesgo para la caché.
+ *
+ * ⚠️ Sin esto la caché (indexada por consulta) devolvería los resultados sesgados a Caracas
+ * después de que el usuario comparta su GPS, y al contrario: "farmatodo" al cambiar de
+ * ciudad mostraría la lista anterior.
+ */
+function biasCacheKey(bias: GeoPoint | undefined): string {
+  return bias === undefined ? "default" : `${bias.lat.toFixed(3)},${bias.lng.toFixed(3)}`;
+}
+
+/**
+ * Envuelve el buscador con: longitud mínima de consulta, cache por consulta exacta +
+ * sesgo (incluye "sin resultados"), dedupe de peticiones en vuelo y limitador de tasa.
  * Siempre se piden PHOTON_FETCH_LIMIT resultados al motor para compartir una única
  * entrada de cache, y aquí solo se recorta lo que se devuelve.
  */
 function createCachedSearch(
-  fetchResults: (query: string) => Promise<GeocodeResult[]>,
+  fetchResults: (query: string, bias: GeoPoint | undefined) => Promise<GeocodeResult[]>,
   schedule: <T>(task: () => Promise<T>) => Promise<T>
-): (query: string, limit: number) => Promise<GeocodeResult[]> {
+): (query: string, limit: number, bias?: GeoPoint) => Promise<GeocodeResult[]> {
   const cache = new Map<string, GeocodeResult[]>();
   const inFlight = new Map<string, Promise<GeocodeResult[]>>();
 
-  return async (query, limit) => {
+  return async (query, limit, bias) => {
     const normalized = normalizeQuery(query);
     if (normalized.length < MIN_QUERY_LENGTH) return [];
 
-    const cached = cache.get(normalized);
+    const cacheKey = `${normalized}|${biasCacheKey(bias)}`;
+
+    const cached = cache.get(cacheKey);
     if (cached !== undefined) return cached.slice(0, limit);
 
-    let running = inFlight.get(normalized);
+    let running = inFlight.get(cacheKey);
     if (running === undefined) {
-      running = schedule(() => fetchResults(normalized)).then((results) => {
-        inFlight.delete(normalized);
+      running = schedule(() => fetchResults(normalized, bias)).then((results) => {
+        inFlight.delete(cacheKey);
         return results;
       });
-      inFlight.set(normalized, running);
+      inFlight.set(cacheKey, running);
     }
 
     const results = await running;
-    cache.set(normalized, results);
+    cache.set(cacheKey, results);
 
     return results.slice(0, limit);
   };
 }
 
-/** Búsqueda con cache de Photon (consulta exacta + dedupe de peticiones en vuelo). */
+/** Búsqueda con cache de Photon (consulta + sesgo, y dedupe de peticiones en vuelo). */
 const searchPhoton = createCachedSearch(
-  (query) => fetchPhotonPlaces(query, PHOTON_FETCH_LIMIT),
+  (query, bias) => fetchPhotonPlaces(query, PHOTON_FETCH_LIMIT, bias),
   schedulePhoton
 );
 
 /**
- * Distancia aproximada en metros entre dos coordenadas (haversine).
- * Suficiente para decidir si dos resultados apuntan al mismo lugar.
+ * Distancias: `distanceMeters` vive ahora en lib/distance.ts porque la comparten también
+ * popularPlaces.ts (orden por cercanía) y el scoring. Ver la nota del ciclo de imports allí.
  */
-function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const EARTH_RADIUS_M = 6_371_000;
-  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-
-  const deltaLat = toRadians(bLat - aLat);
-  const deltaLng = toRadians(bLng - aLng);
-  const haversine =
-    Math.sin(deltaLat / 2) ** 2 +
-    Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(deltaLng / 2) ** 2;
-
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(haversine)));
-}
 
 /** Mismo nombre corto y mismo texto completo: el usuario no puede distinguirlos. */
 function hasSameLabel(a: GeocodeResult, b: GeocodeResult): boolean {
@@ -511,6 +561,17 @@ function popularPlaceToResult(place: PopularPlace): GeocodeResult {
   };
 }
 
+/** Opciones del autocompletado. */
+export interface AutocompleteOptions {
+  /** Número máximo de sugerencias a devolver (por defecto MAX_SUGGESTION_LIMIT). */
+  limit?: number;
+  /**
+   * Ubicación del usuario (GPS). Sesga Photon y ordena por cercanía la lista curada y los
+   * candidatos. Sin ella se usa el sesgo por defecto (centro de Caracas), como antes.
+   */
+  userLocation?: GeoPoint;
+}
+
 /**
  * Autocompletado de direcciones: lugares populares curados + Photon (solo Venezuela).
  *
@@ -521,22 +582,27 @@ function popularPlaceToResult(place: PopularPlace): GeocodeResult {
  *    estén a menos de DEDUPE_RADIUS_METERS de un lugar local para no duplicar el sitio.
  * 3. Por último, dedupeByProximity quita los duplicados que Photon devuelve de sí mismo
  *    (mismo local dos veces con coordenadas casi iguales), que se verían como filas idénticas.
+ * 4. Si llega `options.userLocation` (Fase 3.5g), su posición sustituye a Caracas en el
+ *    sesgo de Photon, ordena la lista curada por cercanía y desempata los candidatos por
+ *    distancia. Sin ubicación, el comportamiento es idéntico al de la fase anterior.
  *
  * TODO (fase posterior): añadir cadenas con muchas sedes (Farmatodo, Farmacias SAAS,
  * Farmacias Bicentenario...) a lib/popularPlaces.ts, ver el TODO de SCORE_LOCATION_TOKEN_BONUS.
  *
  * @param query Texto parcial escrito por el usuario (ej: "el marq", "ccct", "sambil").
- * @param limit Número máximo de sugerencias a devolver (por defecto MAX_SUGGESTION_LIMIT).
+ * @param options Límite de sugerencias y ubicación del usuario (ambos opcionales).
  * @returns Lugares populares primero y luego los de Photon.
  */
 export async function autocompleteAddress(
   query: string,
-  limit: number = MAX_SUGGESTION_LIMIT
+  options: AutocompleteOptions = {}
 ): Promise<GeocodeResult[]> {
-  const popularResults = searchPopularPlaces(query).map(popularPlaceToResult);
+  const { limit = MAX_SUGGESTION_LIMIT, userLocation } = options;
 
-  const candidates = await searchPhoton(query, PHOTON_FETCH_LIMIT);
-  const photonResults = scoreAndSortResults(candidates, query).filter(
+  const popularResults = searchPopularPlaces(query, { userLocation }).map(popularPlaceToResult);
+
+  const candidates = await searchPhoton(query, PHOTON_FETCH_LIMIT, userLocation);
+  const photonResults = scoreAndSortResults(candidates, query, userLocation).filter(
     (candidate) =>
       !popularResults.some(
         (popular) =>
@@ -550,4 +616,184 @@ export async function autocompleteAddress(
   const suggestions = dedupeByProximity([...popularResults, ...photonResults]);
 
   return suggestions.slice(0, limit);
+}
+
+/** Endpoint de geocodificación inversa (dirección de un punto) de Photon. */
+const PHOTON_REVERSE_URL = "https://photon.komoot.io/reverse";
+/** Decimales de las coordenadas en la etiqueta de respaldo: 5 (~1 m) ya es preciso. */
+const FALLBACK_COORD_DECIMALS = 5;
+/** Máximo de puntos recordados en la caché de geocodificación inversa. */
+const MAX_REVERSE_CACHE_ENTRIES = 100;
+
+export interface ReverseGeocodeResult {
+  displayName: string;
+  shortName: string;
+}
+
+/**
+ * Etiqueta de respaldo para un punto sin dirección conocida.
+ *
+ * Se exporta porque la usan dos sitios: reverseGeocode (cuando Photon responde sin datos) y
+ * app/page.tsx (cuando la petición falla del todo). Una sola definición = un solo formato.
+ */
+export function buildFallbackLocation(lat: number, lng: number): ReverseGeocodeResult {
+  return {
+    displayName: `Ubicación seleccionada (${lat.toFixed(FALLBACK_COORD_DECIMALS)}, ${lng.toFixed(
+      FALLBACK_COORD_DECIMALS
+    )})`,
+    shortName: "Ubicación",
+  };
+}
+
+/**
+ * Caché de geocodificación inversa por coordenada redondeada a 4 decimales (~11 m): tocar dos
+ * veces el mismo punto (o casi) no vuelve a molestar al servidor público.
+ */
+const reverseCache = new Map<string, ReverseGeocodeResult>();
+
+function reverseCacheKey(lat: number, lng: number): string {
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+}
+
+/** Propiedades de interés de un feature de /reverse (todas pueden faltar). */
+interface PhotonReverseProperties {
+  name: string;
+  street: string;
+  housenumber: string;
+  suburb: string;
+  district: string;
+  city: string;
+  state: string;
+}
+
+/**
+ * Etiqueta legible de un punto tocado en el mapa.
+ *
+ * Formato pedido: `${name || street}, ${suburb || city}`, con dos matices avisados:
+ * - Si no hay `name` y sí dirección con número, se usa "street housenumber"
+ *   ("Avenida Blandín 5, La Castellana"), que es lo único que identifica el punto.
+ * - El segundo tramo es `suburb || district || city`: en los datos de Venezuela `suburb`
+ *   casi siempre falta y la urbanización/sector viene en `district` (medido en la Fase 3.5f),
+ *   así que sin él un punto en Las Mercedes quedaría como "…, Caracas" y se perdería el dato
+ *   que de verdad orienta al conductor.
+ */
+function buildReverseDisplayName(properties: PhotonReverseProperties): string {
+  const streetPart = [properties.street, properties.housenumber]
+    .filter((part) => part.length > 0)
+    .join(" ");
+  const primary = properties.name.length > 0 ? properties.name : streetPart;
+  const secondary = properties.suburb || properties.district || properties.city;
+
+  return joinUnique([primary, secondary]);
+}
+
+/** Nombre corto del resultado: lo más específico disponible (para etiquetas compactas). */
+function buildReverseShortName(properties: PhotonReverseProperties): string {
+  if (properties.name.length > 0) return properties.name;
+  if (properties.street.length > 0) return properties.street;
+
+  return properties.suburb || properties.district || properties.city || "Ubicación";
+}
+
+/**
+ * Convierte la respuesta de /reverse (`unknown`) al DTO de la app.
+ * Sin features, sin `properties` o sin datos útiles devuelve la etiqueta de respaldo, como
+ * pide la fase: el input del formulario nunca se queda vacío.
+ */
+function parseReverseResponse(
+  payload: unknown,
+  lat: number,
+  lng: number
+): ReverseGeocodeResult {
+  if (!isRecord(payload)) return buildFallbackLocation(lat, lng);
+
+  const features = payload.features;
+  if (!Array.isArray(features) || features.length === 0) return buildFallbackLocation(lat, lng);
+
+  const firstFeature = features[0];
+  if (!isRecord(firstFeature) || !isRecord(firstFeature.properties)) {
+    return buildFallbackLocation(lat, lng);
+  }
+
+  const raw = firstFeature.properties;
+  const properties: PhotonReverseProperties = {
+    name: readString(raw, "name"),
+    street: readString(raw, "street"),
+    housenumber: readString(raw, "housenumber"),
+    suburb: readString(raw, "suburb"),
+    district: readString(raw, "district"),
+    city: readString(raw, "city"),
+    state: readString(raw, "state"),
+  };
+
+  const displayName = buildReverseDisplayName(properties);
+  if (displayName.length === 0) return buildFallbackLocation(lat, lng);
+
+  return { displayName, shortName: buildReverseShortName(properties) };
+}
+
+/**
+ * Petición real a /reverse (una sola: el llamador no debe invocarla directamente).
+ *
+ * Sin `lang` a propósito: Photon solo soporta de|en|fr|it y con `lang=es` responde HTTP 400
+ * (ver la cabecera del módulo); para Venezuela los nombres locales ya vienen en español.
+ */
+async function fetchReverseGeocode(
+  lat: number,
+  lng: number
+): Promise<ReverseGeocodeResult | null> {
+  const url = new URL(PHOTON_REVERSE_URL);
+  url.searchParams.set("lat", String(lat));
+  url.searchParams.set("lon", String(lng));
+
+  const response = await fetch(url.toString(), {
+    // ⚠️ Los navegadores no permiten sobrescribir `User-Agent` (header prohibido por la spec
+    // Fetch); solo tiene efecto si esto se ejecutase en el servidor.
+    headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (!response.ok) return null;
+
+  const payload: unknown = await response.json();
+
+  return parseReverseResponse(payload, lat, lng);
+}
+
+/**
+ * Geocodificación inversa: dirección legible de un punto tocado en el mapa (Fase 3.5h).
+ *
+ * Comparte `schedulePhoton` con el autocompletado: es el mismo servicio y el mismo límite de
+ * 1 petición por segundo.
+ *
+ * @param lat Latitud del punto tocado.
+ * @param lng Longitud del punto tocado.
+ * @returns Dirección legible —o `buildFallbackLocation(lat, lng)` si Photon responde sin
+ *   datos—, y `null` si la petición falla (red, timeout, HTTP !== 200 o JSON inválido: el
+ *   servidor público de /reverse devuelve 503 con frecuencia). Nunca lanza.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lng: number
+): Promise<ReverseGeocodeResult | null> {
+  const cacheKey = reverseCacheKey(lat, lng);
+  const cached = reverseCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  try {
+    const result = await schedulePhoton(() => fetchReverseGeocode(lat, lng));
+    if (result === null) return null;
+
+    if (reverseCache.size >= MAX_REVERSE_CACHE_ENTRIES) {
+      // Map conserva el orden de inserción: la primera clave es la más antigua.
+      const oldestKey = reverseCache.keys().next().value;
+      if (oldestKey !== undefined) reverseCache.delete(oldestKey);
+    }
+    reverseCache.set(cacheKey, result);
+
+    return result;
+  } catch {
+    // Los fallos NO se cachean: el siguiente toque en el mismo punto reintenta.
+    return null;
+  }
 }
