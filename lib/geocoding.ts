@@ -16,15 +16,27 @@
  */
 
 import { searchPopularPlaces, PopularPlace } from "./popularPlaces";
+import { createRateLimiter } from "./rateLimiter";
 
 export interface GeocodeResult {
   lat: number;
   lng: number;
-  /** Nombre legible completo, p. ej. "Centro Comercial Sambil, Caracas, Miranda, Venezuela". */
+  /**
+   * Nombre legible y DISTINGUIBLE entre sedes de la misma cadena:
+   * `${name} — ${street, suburb, district, city}` (las partes vacías se omiten).
+   * Ej: "Farmatodo — Avenida José María Vargas, Santa Fe, Caracas".
+   *
+   * Antes era `name, city, state`, con lo que todas las sedes de una cadena en la misma
+   * ciudad quedaban idénticas ("Farmatodo, Caracas, Miranda") y era imposible elegir.
+   */
   displayName: string;
   /** Nombre corto del lugar (name de OSM), p. ej. "Centro Comercial Sambil". */
   shortName: string;
-  /** Línea secundaria para la lista de sugerencias: ciudad/distrito + estado, p. ej. "Chacao, Miranda". */
+  /**
+   * Ciudad/distrito + estado, p. ej. "Caracas, Miranda". Ya no es la segunda línea del
+   * dropdown (ahora se muestra `displayName`), pero se sigue usando para puntuar
+   * coincidencias por entidad, p. ej. "sambil margarita" (Margarita = estado).
+   */
   secondaryText: string;
   /** Campos estructurados (cadena vacía cuando la fuente no los aporta). */
   city: string;
@@ -70,40 +82,12 @@ const PHOTON_FETCH_LIMIT = 20;
  * de la lista local y se descarta, para no mostrar dos veces el mismo sitio.
  */
 const DEDUPE_RADIUS_METERS = 150;
-const REQUEST_TIMEOUT_MS = 8000;
-
 /**
- * Crea un limitador de tasa: serializa las tareas y garantiza un intervalo mínimo
- * entre peticiones reales (así se respeta el 1 req/seg de cada servicio).
+ * Radio (metros) bajo el cual dos sugerencias con el MISMO nombre se consideran el mismo
+ * sitio y se descarta la peor posicionada (ver dedupeByProximity).
  */
-function createRateLimiter(minIntervalMs: number) {
-  let chain: Promise<void> = Promise.resolve();
-  let lastRunAt = 0;
-
-  return async function schedule<T>(task: () => Promise<T>): Promise<T> {
-    const run = chain.then(async () => {
-      const waitFor = minIntervalMs - (Date.now() - lastRunAt);
-      if (waitFor > 0) await wait(waitFor);
-
-      lastRunAt = Date.now();
-      return task();
-    });
-
-    // La cola no debe romperse si una tarea falla.
-    chain = run.then(
-      () => undefined,
-      () => undefined
-    );
-
-    return run;
-  };
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
+const DEDUPE_PROXIMITY_METERS = 50;
+const REQUEST_TIMEOUT_MS = 8000;
 
 function normalizeQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, " ");
@@ -150,6 +134,23 @@ const COMMERCIAL_OSM_VALUES = new Set(["mall", "commercial", "retail"]);
 const SCORE_COMMERCIAL_BOOST = 25;
 
 /**
+ * Extra cuando un token "de ubicación" de la consulta (a partir del segundo) aparece en
+ * los datos de lugar del resultado (calle, urbanización, ciudad, estado...).
+ *
+ * Por qué: con "farmatodo chacao" la comparación de nombre falla en TODOS los candidatos
+ * (ningún POI se llama "farmatodo chacao"), así que todos puntuaban 0 y el orden quedaba
+ * en manos de Photon, que devuelve primero sedes de La Castellana o Los Palos Grandes.
+ * Con este extra la sede de Chacao (district="Chacao") pasa al frente.
+ *
+ * TODO (fase posterior): sumar a lib/popularPlaces.ts las cadenas con muchas sedes
+ * (Farmatodo, Farmacias SAAS, Farmacias Bicentenario, Locatel...). Photon las encuentra,
+ * pero ni las ordena por popularidad ni trae siempre la urbanización, y una lista local
+ * permitiría además fijar la sede más buscada de cada ciudad.
+ */
+
+const SCORE_LOCATION_TOKEN_BONUS = 30;
+
+/**
  * TODO (fase de geolocalización): sustituir el sesgo fijo de Caracas (BIAS_LATITUDE /
  * BIAS_LONGITUDE, ya enviado a Photon) por la posición real del usuario y, si hace falta,
  * sumar aquí un bonus por distancia (haversine) en vez del boost fijo por estado.
@@ -172,14 +173,18 @@ function isCommercialPlace(result: GeocodeResult): boolean {
 /**
  * Reordena los candidatos de Photon por relevancia respecto a la consulta.
  * Puntuación = categoría de coincidencia + bonuses:
- * - categoría: shortName empieza por la query (100) > shortName la contiene (80) >
- *   displayName empieza por ella (60) > displayName la contiene (40) > resto (0).
+ * - categoría: shortName empieza por la query (100) > shortName la contiene (80) > texto
+ *   de lugar empieza por ella (60) > texto de lugar la contiene (40) > resto (0).
  * - +20 si el lugar está en la región central (Miranda, Distrito Capital, Aragua,
  *   Carabobo, La Guaira/Vargas): desempata dentro de la misma categoría y hace que
  *   "Sambil Margarita" (100) caiga frente a opciones de la zona central.
  * - +25 si la coincidencia es por "contiene" y el POI es comercial (mall/commercial/
  *   retail): así "Centro Comercial Sambil" (125) gana a "Sambilito" (parking, 120) y
  *   a "Sambil Margarita" (prefijo fuera de la región, 100).
+ * - +30 por cada token de ubicación de la consulta ("chacao" en "farmatodo chacao") que
+ *   aparezca en la calle/urbanización/ciudad/estado del resultado: es lo que desempata
+ *   entre sedes de una misma cadena, donde el nombre no puede ayudar (ver
+ *   SCORE_LOCATION_TOKEN_BONUS).
  *
  * Los empates conservan el orden original de Photon (que ya aplica su propio score y
  * recibe el sesgo de Caracas); el desempate se hace por índice, así no dependemos de
@@ -189,9 +194,19 @@ function scoreAndSortResults(results: GeocodeResult[], query: string): GeocodeRe
   const needle = normalize(query);
   if (needle.length === 0) return [...results];
 
+  // Tokens posteriores al primero ("farmatodo CHACAO"): no forman parte del nombre del
+  // lugar, así que se usan para desempatar por ubicación.
+  const locationTokens = needle
+    .split(" ")
+    .filter((token) => token.length > 0)
+    .slice(1);
+
   const scoreOf = (result: GeocodeResult): number => {
     const shortName = normalize(result.shortName);
-    const displayName = normalize(result.displayName);
+    // Texto de comparación = calle/urbanización/ciudad (displayName) + ciudad/estado
+    // (secondaryText). El estado sigue contando aunque ya no esté en displayName, así
+    // "sambil margarita" (Margarita = estado) no pierde relevancia.
+    const placeText = normalize(`${result.displayName} ${result.secondaryText}`);
     const regionBonus = isInCentralRegion(result) ? SCORE_CENTRAL_REGION_BOOST : 0;
 
     if (shortName.startsWith(needle)) return SCORE_NAME_PREFIX + regionBonus;
@@ -199,10 +214,14 @@ function scoreAndSortResults(results: GeocodeResult[], query: string): GeocodeRe
       const commercialBonus = isCommercialPlace(result) ? SCORE_COMMERCIAL_BOOST : 0;
       return SCORE_NAME_CONTAINS + regionBonus + commercialBonus;
     }
-    if (displayName.startsWith(needle)) return SCORE_DISPLAY_PREFIX + regionBonus;
-    if (displayName.includes(needle)) return SCORE_DISPLAY_CONTAINS + regionBonus;
+    if (placeText.startsWith(needle)) return SCORE_DISPLAY_PREFIX + regionBonus;
+    if (placeText.includes(needle)) return SCORE_DISPLAY_CONTAINS + regionBonus;
 
-    return 0;
+    // Sin coincidencia de nombre: decide la ubicación que escribió el usuario.
+    return locationTokens.reduce(
+      (total, token) => (placeText.includes(token) ? total + SCORE_LOCATION_TOKEN_BONUS : total),
+      0
+    );
   };
 
   return results
@@ -219,6 +238,43 @@ function joinUnique(parts: string[]): string {
     .join(", ");
 }
 
+/**
+ * Campos de ubicación de un resultado de Photon. Todos pueden venir vacíos: en los datos
+ * de Venezuela `suburb` casi siempre falta y la urbanización/sector viene en `district`.
+ */
+interface PhotonLocality {
+  street: string;
+  suburb: string;
+  district: string;
+  city: string;
+}
+
+/**
+ * Construye el nombre legible y DISTINGUIBLE de una sugerencia:
+ *   `${name} — ${[street, suburb, district, city].filter(Boolean).join(", ")}`
+ *
+ * Por qué: Photon no mete la urbanización en `name`, así que todas las sedes de una cadena
+ * quedaban como "Farmatodo, Caracas, Miranda": idénticas e imposibles de elegir. La calle
+ * y la urbanización son lo que diferencia una sede de otra.
+ *
+ * El encadenado de partes cubre los huecos de datos: si no hay `street` se muestra
+ * `suburb`; si tampoco, `district`. Si no hay ninguna ubicación, se devuelve solo el
+ * nombre (sin dejar un " — " colgando).
+ *
+ * Verificado contra la API real: "farmatodo" en Caracas ->
+ * "Farmatodo — Avenida José María Vargas, Santa Fe, Caracas".
+ */
+function buildDisplayName(name: string, locality: PhotonLocality): string {
+  const place = joinUnique([
+    locality.street,
+    locality.suburb,
+    locality.district,
+    locality.city,
+  ]);
+
+  return place.length > 0 ? `${name} — ${place}` : name;
+}
+
 /** Lee una propiedad de texto de un objeto JSON desconocido (sin `any`). */
 function readString(source: Record<string, unknown>, key: string): string {
   const value = source[key];
@@ -226,7 +282,11 @@ function readString(source: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-/** Limitador de tasa del autocompletado (máximo 1 petición por segundo a Photon). */
+/**
+ * Limitador de tasa del autocompletado (máximo 1 petición por segundo a Photon).
+ * La implementación vive en lib/rateLimiter.ts y se comparte con el cliente de rutas
+ * (lib/routing.ts); esta es la cola propia de Photon.
+ */
 const schedulePhoton = createRateLimiter(MIN_INTERVAL_MS);
 
 /** Type guard de un feature de Photon (geometry.coordinates = [lng, lat]). */
@@ -294,8 +354,11 @@ async function fetchPhotonPlaces(query: string, limit: number): Promise<GeocodeR
 
       const properties = item.properties;
       const name = readString(properties, "name");
-      const city = readString(properties, "city");
+      // Calle y urbanización: imprescindibles para distinguir sedes de la misma cadena.
+      const street = readString(properties, "street");
+      const suburb = readString(properties, "suburb");
       const district = readString(properties, "district");
+      const city = readString(properties, "city");
       const state = readString(properties, "state");
       const country = readString(properties, "country");
       const countryCode = readString(properties, "countrycode").toUpperCase();
@@ -310,7 +373,7 @@ async function fetchPhotonPlaces(query: string, limit: number): Promise<GeocodeR
       results.push({
         lat,
         lng,
-        displayName: joinUnique([shortName, city || district, state, country]),
+        displayName: buildDisplayName(shortName, { street, suburb, district, city }),
         shortName,
         secondaryText: joinUnique([city || district, state]),
         city,
@@ -386,6 +449,50 @@ function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number):
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(haversine)));
 }
 
+/** Mismo nombre corto y mismo texto completo: el usuario no puede distinguirlos. */
+function hasSameLabel(a: GeocodeResult, b: GeocodeResult): boolean {
+  return a.shortName === b.shortName && a.displayName === b.displayName;
+}
+
+/**
+ * Quita de una lista de sugerencias los duplicados del MISMO sitio.
+ *
+ * Photon devuelve a veces el mismo local dos veces con coordenadas ligeramente distintas:
+ * medido con "farmatodo chacao", "Farmatodo — Avenida Francisco de Miranda, Chacao, Caracas"
+ * aparece dos veces a ~11 m de distancia.
+ *
+ * Dos resultados se consideran el mismo sitio cuando comparten `shortName` y, además:
+ * - están a menos de `thresholdMeters` entre sí (el mismo POI mapeado dos veces), o
+ * - tienen EXACTAMENTE el mismo `displayName`, así que el usuario no puede distinguirlos ni
+ *   con la segunda línea del dropdown (caso medido: "Farmatodo — Avenida Libertador, Sector
+ *   Estado Leal, Caracas" duplicado a ~90 m, fuera del radio de 50 m).
+ *
+ * Se conserva SIEMPRE el primero, que es el mejor posicionado: los lugares curados van
+ * delante y los de Photon ya vienen ordenados por relevancia.
+ *
+ * @param results Sugerencias ya ordenadas por relevancia.
+ * @param thresholdMeters Distancia bajo la cual dos coincidencias se consideran el mismo sitio.
+ */
+export function dedupeByProximity(
+  results: GeocodeResult[],
+  thresholdMeters = DEDUPE_PROXIMITY_METERS
+): GeocodeResult[] {
+  const unique: GeocodeResult[] = [];
+
+  for (const candidate of results) {
+    const isDuplicate = unique.some(
+      (kept) =>
+        kept.shortName === candidate.shortName &&
+        (hasSameLabel(kept, candidate) ||
+          distanceMeters(kept.lat, kept.lng, candidate.lat, candidate.lng) < thresholdMeters)
+    );
+
+    if (!isDuplicate) unique.push(candidate);
+  }
+
+  return unique;
+}
+
 /**
  * Convierte un lugar de la lista local curada al DTO común de geocodificación.
  * `osmValue` se reutiliza aquí para llevar el tipo curado (mall, airport, hospital...).
@@ -412,6 +519,11 @@ function popularPlaceToResult(place: PopularPlace): GeocodeResult {
  *    el centro comercial).
  * 2. Después van los candidatos de Photon ordenados por relevancia, descartando los que
  *    estén a menos de DEDUPE_RADIUS_METERS de un lugar local para no duplicar el sitio.
+ * 3. Por último, dedupeByProximity quita los duplicados que Photon devuelve de sí mismo
+ *    (mismo local dos veces con coordenadas casi iguales), que se verían como filas idénticas.
+ *
+ * TODO (fase posterior): añadir cadenas con muchas sedes (Farmatodo, Farmacias SAAS,
+ * Farmacias Bicentenario...) a lib/popularPlaces.ts, ver el TODO de SCORE_LOCATION_TOKEN_BONUS.
  *
  * @param query Texto parcial escrito por el usuario (ej: "el marq", "ccct", "sambil").
  * @param limit Número máximo de sugerencias a devolver (por defecto MAX_SUGGESTION_LIMIT).
@@ -433,5 +545,9 @@ export async function autocompleteAddress(
       )
   );
 
-  return [...popularResults, ...photonResults].slice(0, limit);
+  // El dedupe va ANTES de recortar: si no, un duplicado invisible gasta uno de los 6 huecos
+  // y se pierde una sugerencia útil.
+  const suggestions = dedupeByProximity([...popularResults, ...photonResults]);
+
+  return suggestions.slice(0, limit);
 }

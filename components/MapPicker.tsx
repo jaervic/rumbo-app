@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_HEIGHT_CLASS } from "@/lib/mapConfig";
@@ -44,14 +44,21 @@ const destinationIcon = L.divIcon({
 export interface MapPickerProps {
   origin?: [number, number];
   destination?: [number, number];
+  /** Trazo de la ruta devuelto por OSRM (GeoJSON). Si falta, no se dibuja ninguna línea. */
+  routeGeometry?: GeoJSON.LineString;
+}
+
+/** Coordenadas GeoJSON ([lng, lat]) -> LatLng de Leaflet ([lat, lng]). */
+function toLatLngs(geometry: GeoJSON.LineString): [number, number][] {
+  return geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 }
 
 /**
  * Ajusta la vista del mapa según las coordenadas disponibles:
- * - Origen + destino -> fitBounds para encuadrar ambos puntos.
+ * - Origen + destino -> fitBounds para encuadrar ambos puntos y la ruta completa.
  * - Solo uno -> centra en ese punto con zoom 14.
  */
-function MapViewController({ origin, destination }: MapPickerProps) {
+function MapViewController({ origin, destination, routeGeometry }: MapPickerProps) {
   const map = useMap();
 
   // Recalcula el tamaño interno de Leaflet cuando cambia el tamaño del contenedor.
@@ -66,6 +73,10 @@ function MapViewController({ origin, destination }: MapPickerProps) {
   }, [map]);
 
   useEffect(() => {
+    // La ruta completa entra en el encuadre: limitarse a los extremos deja fuera de la
+    // vista los tramos que se desvían del camino recto entre origen y destino.
+    const routePoints = routeGeometry ? toLatLngs(routeGeometry) : [];
+
     if (origin && destination) {
       // Padding proporcional al contenedor: 40px fijos son correctos en desktop,
       // pero en un mapa móvil de ~240px de alto dejarían muy poco espacio para
@@ -73,7 +84,7 @@ function MapViewController({ origin, destination }: MapPickerProps) {
       const size = map.getSize();
       const padding = Math.round(Math.min(40, size.y * 0.15));
 
-      map.fitBounds(L.latLngBounds([origin, destination]), {
+      map.fitBounds(L.latLngBounds([origin, destination, ...routePoints]), {
         padding: [padding, padding],
         maxZoom: 15,
       });
@@ -84,7 +95,7 @@ function MapViewController({ origin, destination }: MapPickerProps) {
     if (single) {
       map.setView(single, 14);
     }
-  }, [map, origin, destination]);
+  }, [map, origin, destination, routeGeometry]);
 
   return null;
 }
@@ -137,7 +148,7 @@ function MapTouchOverlay({ onActivate }: { onActivate: () => void }) {
   );
 }
 
-export default function MapPicker({ origin, destination }: MapPickerProps) {
+export default function MapPicker({ origin, destination, routeGeometry }: MapPickerProps) {
   const defaultCenter: [number, number] = [10.48, -66.90]; // Caracas, Venezuela
 
   const isCoarsePointer = useSyncExternalStore(
@@ -168,11 +179,27 @@ export default function MapPicker({ origin, destination }: MapPickerProps) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {/* La polyline es declarativa: al cambiar `positions`, React reutiliza el mismo
+            layer de Leaflet (setLatLngs) y al quedarse sin ruta el componente se
+            desmonta y Leaflet elimina el trazo. Así nunca se acumulan líneas viejas. */}
+        {routeGeometry && (
+          <Polyline
+            positions={toLatLngs(routeGeometry)}
+            color="#2563eb"
+            weight={5}
+            opacity={0.7}
+          />
+        )}
+
         {origin && <Marker position={origin} icon={originIcon} />}
         {destination && (
           <Marker position={destination} icon={destinationIcon} />
         )}
-        <MapViewController origin={origin} destination={destination} />
+        <MapViewController
+          origin={origin}
+          destination={destination}
+          routeGeometry={routeGeometry}
+        />
       </MapContainer>
 
       {isOverlayVisible && (

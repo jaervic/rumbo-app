@@ -3,6 +3,8 @@
 import { useCallback, useState } from "react";
 import QuoteForm from "@/components/QuoteForm";
 import MapPickerWrapper from "@/components/MapPickerWrapper";
+import RouteSummary from "@/components/RouteSummary";
+import { useRoute } from "@/hooks/useRoute";
 import { QuoteCoords } from "@/types";
 
 const INITIAL_COORDS: QuoteCoords = { origin: null, destination: null };
@@ -14,6 +16,12 @@ export default function Home() {
   const handleCoordsChange = useCallback((next: QuoteCoords) => {
     setCoords(next);
   }, []);
+
+  // Fase 4: la ruta (distancia y duración por calles) llega desde OSRM. Solo se pide
+  // cuando hay AMBAS coordenadas; en cuanto cambian, la petición anterior se cancela.
+  const { route, loading, error } = useRoute(coords.origin, coords.destination);
+  const hasCoords = coords.origin !== null && coords.destination !== null;
+
   return (
     <main className="min-h-dvh bg-background px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6 sm:space-y-8">
@@ -41,6 +49,15 @@ export default function Home() {
             <MapPickerWrapper
               origin={coords.origin ?? undefined}
               destination={coords.destination ?? undefined}
+              routeGeometry={route?.geometry}
+            />
+            {/* El resumen va debajo del mapa, en su misma columna: en móvil aparece
+                justo tras el mapa y en desktop cierra la columna derecha. */}
+            <RouteSummary
+              route={route}
+              loading={loading}
+              error={error}
+              hasCoords={hasCoords}
             />
           </section>
         </div>

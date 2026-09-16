@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   autocompleteAddress,
+  dedupeByProximity,
   MAX_SUGGESTION_LIMIT,
   MIN_QUERY_LENGTH,
   GeocodeResult,
@@ -73,16 +74,20 @@ function AddressAutocomplete({
 
   const isLoading = isQueryValid && !isPinned && !isSettled;
   const results: GeocodeResult[] = isPinned ? [] : settledResults;
+  // Segunda barrera de deduplicación (la primera está en lib/geocoding.ts: mismo nombre a
+  // menos de 50 m). Es idempotente y garantiza que la UI nunca pinte dos filas idénticas
+  // aunque cambie la fuente de datos.
+  const visibleResults = dedupeByProximity(results);
   const hasNoResults =
     isQueryValid &&
     !isPinned &&
     isSettled &&
-    results.length === 0 &&
+    visibleResults.length === 0 &&
     trimmed.length > MIN_QUERY_LENGTH;
-  const isDropdownVisible = !isDismissed && (results.length > 0 || hasNoResults);
+  const isDropdownVisible = !isDismissed && (visibleResults.length > 0 || hasNoResults);
 
   const activeIndex =
-    highlightedIndex >= 0 && highlightedIndex < results.length ? highlightedIndex : -1;
+    highlightedIndex >= 0 && highlightedIndex < visibleResults.length ? highlightedIndex : -1;
   const listboxId = `${id}-listbox`;
 
   // Búsqueda con debounce: el setState ocurre dentro del callback del timer
@@ -148,23 +153,23 @@ function AddressAutocomplete({
       return;
     }
 
-    if (!isDropdownVisible || results.length === 0) return;
+    if (!isDropdownVisible || visibleResults.length === 0) return;
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setHighlightedIndex((current) => (current + 1) % results.length);
+      setHighlightedIndex((current) => (current + 1) % visibleResults.length);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setHighlightedIndex((current) => (current <= 0 ? results.length - 1 : current - 1));
+      setHighlightedIndex((current) => (current <= 0 ? visibleResults.length - 1 : current - 1));
       return;
     }
 
     if (event.key === "Enter" && activeIndex >= 0) {
       event.preventDefault();
-      selectSuggestion(results[activeIndex]);
+      selectSuggestion(visibleResults[activeIndex]);
     }
   };
 
@@ -177,7 +182,7 @@ function AddressAutocomplete({
           id={id}
           role="combobox"
           aria-expanded={isDropdownVisible}
-          aria-controls={results.length > 0 ? listboxId : undefined}
+          aria-controls={visibleResults.length > 0 ? listboxId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
           aria-invalid={hasNoResults}
@@ -194,14 +199,14 @@ function AddressAutocomplete({
           <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
 
-        {isDropdownVisible && results.length > 0 && (
+        {isDropdownVisible && visibleResults.length > 0 && (
           <ul
             id={listboxId}
             role="listbox"
             aria-label={`Sugerencias para ${label}`}
             className="absolute top-full left-0 right-0 z-50 mt-1 max-h-[min(50dvh,17.5rem)] overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
           >
-            {results.map((suggestion, index) => (
+            {visibleResults.map((suggestion, index) => (
               <li
                 key={`${id}-option-${suggestion.lat}-${suggestion.lng}-${index}`}
                 id={`${id}-option-${index}`}
@@ -216,9 +221,12 @@ function AddressAutocomplete({
                   index === activeIndex && "bg-accent text-accent-foreground"
                 )}
               >
-                <span className="block truncate text-sm font-medium">{suggestion.shortName}</span>
+                <span className="block truncate text-sm font-semibold">{suggestion.shortName}</span>
+                {/* Segunda línea: displayName completo ("Farmatodo — Avenida José María
+                    Vargas, Santa Fe, Caracas"). Es lo que distingue una sede de otra
+                    dentro de la misma cadena; el title cubre el texto truncado. */}
                 <span className="block truncate text-xs text-muted-foreground">
-                  {suggestion.secondaryText}
+                  {suggestion.displayName}
                 </span>
               </li>
             ))}

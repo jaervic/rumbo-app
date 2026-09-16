@@ -13,6 +13,12 @@
  * al centro urbano de cada ciudad.
  *
  * TODO: revisar las coordenadas exactas de los lugares no verificados (los aproximados).
+ * TODO (fase posterior): añadir las cadenas con muchas sedes y sus sedes más buscadas:
+ * Farmatodo, Farmacias SAAS, Farmacias Bicentenario, Locatel, Automercados Plaza's...
+ * Photon ya devuelve varias sedes, pero no las ordena por popularidad ni trae siempre la
+ * urbanización; con la lista local se puede fijar directamente la sede de cada ciudad y
+ * su `shortName` distintivo (ver buildDisplayName en lib/geocoding.ts, que es lo que hace
+ * legibles las sedes que sí llegan de Photon).
  * TODO (Fase 7+): ampliar esta lista con analytics de búsquedas reales desde Supabase
  * (qué escriben de verdad los usuarios y qué eligen de la lista de sugerencias).
  */
