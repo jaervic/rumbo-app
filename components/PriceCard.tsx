@@ -61,6 +61,19 @@ function formatDistance(distanceKm: number): string {
   return distanceKm.toFixed(2).replace(".", ",");
 }
 
+/** "1 pasajero" / "3 pasajeros". */
+function formatPassengers(count: number): string {
+  return `${count} ${count === 1 ? "pasajero" : "pasajeros"}`;
+}
+
+/**
+ * "1 adicional" / "2 adicionales". El singular importa: con 2 pasajeros en el vehículo el formato
+ * "(N-1 adicionales)" daría "1 adicionales". Esto es SOLO texto de UI: no toca la fórmula.
+ */
+function formatAdditionalPassengers(count: number): string {
+  return `${count} ${count === 1 ? "adicional" : "adicionales"}`;
+}
+
 /** Multiplicador de tarifa: 1.05 → "×1,05". */
 function formatMultiplier(factor: number): string {
   return `×${factor.toFixed(2).replace(".", ",")}`;
@@ -101,9 +114,11 @@ function PriceContent({ price, route, passengers, vehicleLabel }: PriceContentPr
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {/* min-w-0: con "para este viaje" el título es más largo y en un móvil de 320 px debe poder
+            envolver en dos líneas en vez de desbordar la tarjeta. */}
+        <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           <Wallet className="size-4 shrink-0" aria-hidden="true" />
-          Precio estimado (USD)
+          Precio estimado para este viaje (USD)
         </p>
         {price.minimumFareApplied && (
           <p className="text-xs text-muted-foreground">viaje mínimo aplicado</p>
@@ -136,7 +151,10 @@ function PriceContent({ price, route, passengers, vehicleLabel }: PriceContentPr
         </li>
         <li className="flex items-center gap-1.5">
           <Users className="size-3.5 shrink-0" aria-hidden="true" />
-          {vehicleLabel} · {passengers} {passengers === 1 ? "pasajero" : "pasajeros"}
+          {/* Los pasajeros adicionales son los que pagan recargo, así que se dicen aquí mismo:
+              "Sedán · 3 pasajeros (2 adicionales)". Con un solo pasajero no hay paréntesis. */}
+          {vehicleLabel} · {formatPassengers(passengers)}
+          {passengers > 1 ? ` (${formatAdditionalPassengers(passengers - 1)})` : null}
         </li>
       </ul>
 
@@ -161,7 +179,7 @@ function PriceContent({ price, route, passengers, vehicleLabel }: PriceContentPr
           />
           {price.passengerSurcharge > 0 && (
             <BreakdownRow
-              label={`Pasajeros adicionales (${passengers - 1})`}
+              label={`Pasajeros adicionales (${passengers - 1} de ${passengers})`}
               value={formatUsd(price.passengerSurcharge)}
             />
           )}
