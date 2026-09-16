@@ -1,19 +1,33 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import QuoteForm, { type QuoteFormHandle } from "@/components/QuoteForm";
 import MapModeToggle from "@/components/MapModeToggle";
 import MapPickerWrapper from "@/components/MapPickerWrapper";
-import RouteInfoCard from "@/components/RouteInfoCard";
+import PriceCard from "@/components/PriceCard";
 import { useRoute } from "@/hooks/useRoute";
 import { buildFallbackLocation, reverseGeocode } from "@/lib/geocoding";
 import type { GeoPoint } from "@/lib/distance";
-import { MapSelectionMode, QuoteCoords } from "@/types";
+import { estimatePrice } from "@/lib/pricing";
+import { MapSelectionMode, QuoteCoords, QuoteRequest } from "@/types";
 
 const INITIAL_COORDS: QuoteCoords = { origin: null, destination: null };
 
+/**
+ * Cotización inicial (Fase 6). QuoteForm avisa de cada cambio con `onRequestChange` y aquí se guarda
+ * el último estado recibido: es lo que alimenta al motor de precios.
+ */
+const INITIAL_REQUEST: QuoteRequest = {
+  origin: "",
+  destination: "",
+  passengers: 1,
+  vehicleType: "sedan",
+};
+
 export default function Home() {
   const [coords, setCoords] = useState<QuoteCoords>(INITIAL_COORDS);
+  // Fase 6: última cotización emitida por QuoteForm (vehículo y pasajeros son los datos tarifables).
+  const [request, setRequest] = useState<QuoteRequest>(INITIAL_REQUEST);
 
   // Fase 3.5h: campo que se fija con el siguiente toque en el mapa (null = toques ignorados).
   const [activeMapMode, setActiveMapMode] = useState<MapSelectionMode | null>(null);
@@ -34,10 +48,56 @@ export default function Home() {
     setCoords(next);
   }, []);
 
+  // Igual que las coordenadas: identidad estable para no re-disparar el efecto de QuoteForm.
+  const handleRequestChange = useCallback((next: QuoteRequest) => {
+    setRequest(next);
+  }, []);
+
   // Fase 4: la ruta (distancia y duración por calles) llega desde OSRM. Solo se pide
   // cuando hay AMBAS coordenadas; en cuanto cambian, la petición anterior se cancela.
-  const { route, loading, error } = useRoute(coords.origin, coords.destination);
+  const { route, loading } = useRoute(coords.origin, coords.destination);
   const hasCoords = coords.origin !== null && coords.destination !== null;
+
+  /**
+   * Precio en vivo (Fase 6): sin red, porque `estimatePrice` es puro y trabaja sobre la ruta que ya
+   * resolvió `useRoute`. `null` significa una de tres cosas, y PriceCard decide cuál explicar: falta
+   * alguna coordenada, la ruta no llegó, o la combinación vehículo/pasajeros no es posible.
+   *
+   * TODO (Fase 7+): el factor de tráfico se fija con la hora del cálculo. Si el usuario deja la
+   * página abierta y cruza una franja horaria (p. ej. las 22:00), el precio se actualiza al siguiente
+   * cambio de ruta, vehículo o pasajeros; para que se refresque solo haría falta un reloj.
+   */
+  const price = useMemo(
+    () =>
+      route === null
+        ? null
+        : estimatePrice({
+            distanceKm: route.distanceKm,
+            durationIdealMin: route.durationMin,
+            vehicleType: request.vehicleType,
+            passengers: request.passengers,
+          }),
+    [route, request.vehicleType, request.passengers]
+  );
+
+  // Tarjeta del precio: el botón del formulario la enfoca y desplaza hasta ella.
+  const priceCardRef = useRef<HTMLElement>(null);
+
+  /**
+   * Acción del botón principal del formulario. En móvil la tarjeta del precio queda DEBAJO del mapa,
+   * así que el botón sirve como "ver mi precio" sin obligar a desplazarse a mano. Se enfoca la
+   * tarjeta (`tabIndex={-1}` en PriceCard) para que el lector de pantalla anuncie el resultado, con
+   * preventScroll para no deshacer el desplazamiento suave que se acaba de lanzar.
+   */
+  const handleViewPrice = useCallback(() => {
+    const card = priceCardRef.current;
+    if (card === null) return;
+
+    // Quien pidió menos movimiento en su sistema no ve un desplazamiento animado.
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "center" });
+    card.focus({ preventScroll: true });
+  }, []);
 
   /**
    * Toque en el mapa: resuelve la dirección del punto y la fija en el campo activo.
@@ -94,9 +154,10 @@ export default function Home() {
               onUserLocationChange={handleUserLocationChange}
               // El campo que se está resolviendo es el del modo activo (no cambia hasta terminar).
               resolvingField={isResolvingMapAddress ? activeMapMode : null}
-              // TODO (Fase 5): lo activará la petición de precios; hoy refleja el único cálculo
-              // real que existe (la ruta de OSRM).
-              isSubmitting={loading && hasCoords}
+              // Fase 6: el precio se calcula en vivo con lo que el formulario informe (ver `price`).
+              onRequestChange={handleRequestChange}
+              // El botón del formulario ya no calcula: lleva a la tarjeta del precio.
+              onViewPrice={handleViewPrice}
             />
           </aside>
 
@@ -126,10 +187,12 @@ export default function Home() {
 
             {/* Un solo componente con dos órdenes: en móvil el resultado va debajo del mapa (la
                 fuente de datos primero) y desde md queda arriba, más cerca de la vista. */}
-            <RouteInfoCard
+            <PriceCard
+              ref={priceCardRef}
+              price={price}
               route={route}
+              request={request}
               loading={loading}
-              error={error}
               hasCoords={hasCoords}
               className="order-3 md:order-2"
             />

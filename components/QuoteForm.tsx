@@ -20,11 +20,31 @@ import {
   MIN_QUERY_LENGTH,
   GeocodeResult,
 } from "@/lib/geocoding";
-import { Coords, MapSelectionMode, QuoteCoords, QuoteRequest } from "@/types";
+import { getVehicleCapacity, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
+import { Coords, MapSelectionMode, QuoteCoords, QuoteRequest, VehicleType } from "@/types";
 import { useUserLocation, type UserLocation } from "@/hooks/useUserLocation";
 
 /** Debounce de escritura antes de pedir sugerencias a Photon. */
 const GEOCODE_DEBOUNCE_MS = 500;
+
+/**
+ * Máximo absoluto de pasajeros que acepta el campo: el del vehículo más capaz del parque. El
+ * límite POR VEHÍCULO es otra cosa y vive en lib/pricing.ts (`getVehicleCapacity`, alimentado por
+ * VEHICLE_TARIFFS); aquí solo se evita poder escribir un 99 sin sentido.
+ */
+const MAX_PASSENGERS = 6;
+
+/**
+ * Cómo se nombra el vehículo en un mensaje al usuario ("Esta moto no puede llevar 6 pasajeros").
+ * Es texto de UI (concordancia de género) y por eso NO vive en lib/pricing.ts; la capacidad —que
+ * es un número de negocio— sí se lee de ahí con `getVehicleCapacity`.
+ */
+const VEHICLE_SUBJECTS: Record<VehicleType, string> = {
+  moto: "Esta moto",
+  sedan: "Este sedán",
+  suv: "Este SUV",
+  van: "Esta van",
+};
 
 /**
  * API imperativa del formulario.
@@ -54,11 +74,16 @@ export interface QuoteFormProps {
   /** Campo cuya dirección se está resolviendo (reverse geocoding): muestra el spinner. */
   resolvingField?: MapSelectionMode | null;
   /**
-   * Se está calculando: el botón de envío muestra spinner y "Calculando...".
-   * TODO (Fase 5): lo activará el motor de precios; hoy lo activa la página mientras OSRM
-   * calcula la ruta, que es el único cálculo real que existe.
+   * Notifica CADA cambio del formulario (Fase 6). Con el precio en vivo el formulario no "envía"
+   * nada: informa del estado actual para que la página calcule el precio mientras el usuario
+   * escribe y elige (vehículo y pasajeros son los datos que se tarifan).
    */
-  isSubmitting?: boolean;
+  onRequestChange?: (request: QuoteRequest) => void;
+  /**
+   * Acción del botón principal. Ya no calcula nada (el precio se calcula solo): lleva al usuario a
+   * la tarjeta del precio, que en móvil queda debajo del mapa.
+   */
+  onViewPrice?: () => void;
 }
 
 interface AddressAutocompleteProps {
@@ -333,7 +358,8 @@ export default function QuoteForm({
   ref,
   onUserLocationChange,
   resolvingField = null,
-  isSubmitting = false,
+  onRequestChange,
+  onViewPrice,
 }: QuoteFormProps) {
   const [formData, setFormData] = useState<QuoteRequest>({
     origin: "",
@@ -341,6 +367,11 @@ export default function QuoteForm({
     passengers: 1,
     vehicleType: "sedan",
   });
+
+  // Capacidad del vehículo elegido (fuente única: la tabla de tarifas de lib/pricing.ts). Si el
+  // viaje la supera no se calcula precio y el mensaje de abajo explica por qué.
+  const maxPassengers = getVehicleCapacity(formData.vehicleType);
+  const hasTooManyPassengers = formData.passengers > maxPassengers;
 
   // Fase 3.5g: ubicación del usuario. El hook NO la pide al montar (ver useUserLocation);
   // solo se pide al pulsar el botón del campo Origen. Si no hay, `location` es null y todo
@@ -422,9 +453,11 @@ export default function QuoteForm({
     onUserLocationChange?.(location);
   }, [onUserLocationChange, location]);
 
-  // El botón de envío solo se habilita con origen y destino escritos.
-  const canSubmit =
-    formData.origin.trim().length > 0 && formData.destination.trim().length > 0;
+  // Fase 6: cada cambio del formulario se comunica a la página, que recalcula el precio en vivo con
+  // `estimatePrice` (puro): no hay petición de red ni estado de carga que gestionar aquí.
+  useEffect(() => {
+    onRequestChange?.(formData);
+  }, [onRequestChange, formData]);
 
   /**
    * "Buscando dirección..." del campo cuya dirección se está resolviendo: el spinner va junto al
@@ -438,14 +471,22 @@ export default function QuoteForm({
       </span>
     ) : undefined;
 
+  /**
+   * El formulario ya no "envía" una cotización: el precio es en vivo. El submit solo lleva al
+   * usuario a la tarjeta del precio, que explica lo que falte (coordenadas, ruta o combinación).
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Datos del formulario:", formData);
+    onViewPrice?.();
   };
 
   return (
     <form
       onSubmit={handleSubmit}
+      // noValidate: con el precio en vivo, las burbujas nativas del navegador ("Please fill out this
+      // field") competirían con los mensajes de la app, que son los que explican el estado real
+      // (falta origen y destino, más pasajeros que la capacidad del vehículo...).
+      noValidate
       className="space-y-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:space-y-6 sm:p-5 md:p-6"
     >
       <div className="space-y-4">
@@ -571,12 +612,35 @@ export default function QuoteForm({
               inputMode="numeric"
               enterKeyHint="done"
               min={1}
-              max={6}
+              max={MAX_PASSENGERS}
               value={formData.passengers}
-              onChange={(e) => setFormData({ ...formData, passengers: parseInt(e.target.value) || 1 })}
+              // Se recorta al rango [1, MAX_PASSENGERS] (el del vehículo más capaz). El techo POR
+              // VEHÍCULO no se recorta: se avisa, porque recortar en silencio dejaría al usuario sin
+              // entender por qué desapareció su pasajero.
+              onChange={(e) =>
+                setFormData((current) => ({
+                  ...current,
+                  passengers: Math.min(
+                    MAX_PASSENGERS,
+                    Math.max(1, Number.parseInt(e.target.value, 10) || 1)
+                  ),
+                }))
+              }
+              aria-invalid={hasTooManyPassengers}
+              aria-describedby={hasTooManyPassengers ? "passengers-error" : undefined}
               className="min-h-11 md:min-h-0"
               required
             />
+
+            {/* Capacidad superada: el aviso va junto al campo que hay que corregir y el precio no se
+                calcula (PriceCard muestra "Esta combinación no es posible"). Se añade el máximo
+                válido para que no haya que adivinarlo probando. */}
+            {hasTooManyPassengers && (
+              <p id="passengers-error" className="text-xs text-destructive" aria-live="polite">
+                {VEHICLE_SUBJECTS[formData.vehicleType]} no puede llevar {formData.passengers}{" "}
+                pasajeros (máximo {maxPassengers}).
+              </p>
+            )}
           </div>
 
           <div className="grid min-w-0 gap-2">
@@ -586,7 +650,7 @@ export default function QuoteForm({
               onValueChange={(value) => {
                 // El Select puede emitir null (ej: al limpiarse), solo actualizamos con un valor válido
                 if (value) {
-                  setFormData({ ...formData, vehicleType: value });
+                  setFormData((current) => ({ ...current, vehicleType: value }));
                 }
               }}
             >
@@ -600,30 +664,28 @@ export default function QuoteForm({
                 <SelectValue placeholder="Tipo de vehículo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="moto">Moto</SelectItem>
-                <SelectItem value="sedan">Sedán</SelectItem>
-                <SelectItem value="suv">SUV</SelectItem>
-                <SelectItem value="van">Van</SelectItem>
+                {/* Nombres y orden salen de lib/pricing.ts: la etiqueta que el usuario ve y la
+                    tarifa que se aplica no pueden desincronizarse. */}
+                {VEHICLE_TYPES.map((vehicle) => (
+                  <SelectItem key={vehicle} value={vehicle}>
+                    {VEHICLE_LABELS[vehicle]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </div>
       </div>
 
+      {/* Siempre habilitado: no hay nada que "enviar" (el precio es en vivo) y el botón solo lleva a
+          la tarjeta del precio, que explica lo que falte. Antes se deshabilitaba y el usuario se
+          quedaba sin saber por qué. */}
       <Button
         type="submit"
         size="lg"
-        disabled={!canSubmit || isSubmitting}
         className="min-h-12 w-full text-base font-semibold md:min-h-0 md:text-sm"
       >
-        {isSubmitting ? (
-          <>
-            <Loader2 className="animate-spin" aria-hidden="true" />
-            Calculando...
-          </>
-        ) : (
-          "Calcular precio"
-        )}
+        Ver precio estimado
       </Button>
     </form>
   );

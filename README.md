@@ -9,7 +9,7 @@ Web-app para estimar precios de transporte para conductores independientes, perm
 - **Estilos:** [Tailwind CSS v4](https://tailwindcss.com/)
 - **Componentes:** [shadcn/ui](https://ui.shadcn.com/)
 - **Mapas:** [Leaflet](https://leafletjs.com/) + [OpenStreetMap](https://www.openstreetmap.org/)
-- **Rutas:** [OSRM](http://project-osrm.org/) (Público, próxima fase)
+- **Rutas y distancia:** [OSRM](http://project-osrm.org/) (servidor público, sin API key)
 - **Autocompletado de direcciones:** [Photon](https://photon.komoot.io/) (OpenStreetMap, gratis)
 - **Base de Datos:** [Supabase](https://supabase.com/) (Próximamente)
 
@@ -23,6 +23,88 @@ lib/            # Utilidades y lógica de negocio (pricing, fetching, etc.)
 types/          # Definiciones de tipos TypeScript
 public/         # Assets estáticos
 ```
+
+## Motor de precios (Fase 5)
+
+Todo el cálculo vive en `lib/pricing.ts` y tiene dos capas:
+
+- **`estimatePrice(input)`** — cálculo puro y sin red: recibe distancia (km), duración ideal (min),
+  vehículo y pasajeros, y devuelve un `PriceEstimate` con el desglose completo, o `null` si la
+  combinación no permite un precio honesto (p. ej. 3 pasajeros en una moto).
+- **`calculatePrice(request, options)`** — capa orquestada: usa la ruta ya calculada (la de
+  `useRoute`) o la pide a OSRM con las coordenadas, y luego aplica `estimatePrice`.
+
+### Fórmula
+
+```text
+minAjustados = duraciónIdealOSRM × factorTráfico(hora de Venezuela)   (mínimo 1 min)
+bruto        = bandera + (km × tarifaKm) + (minAjustados × tarifaMin) + recargoPasajeros
+bruto       *= recargoNocturno × factorClima
+medio        = max(bruto, viajeMínimo del vehículo)
+rango        = medio × (1 ± 12 %)        priceMin nunca baja del viaje mínimo
+```
+
+### Factores y constantes
+
+| Constante | Valor | Por qué |
+| --- | --- | --- |
+| `VEHICLE_TARIFFS` | bandera + tarifa/km + tarifa/min + recargo por pasajero + viaje mínimo + capacidad, **por tipo de vehículo** | Cada vehículo tiene su estructura de coste; una tabla se ajusta sin tocar la fórmula |
+| `TRAFFIC_BANDS` (vía `getTrafficFactor`) | pico AM/PM 1,35 · mediodía 1,20 · madrugada 0,85 | OSRM da la duración *ideal* (sin tráfico); esta heurística la corrige por franja horaria |
+| `NIGHT_SURCHARGE_FACTOR` | 1,15 (22:00–06:00) | Menos oferta y más riesgo de noche; cambia el PRECIO, no los minutos |
+| `WEATHER_FACTOR` | 1 | Sin API de clima todavía; el gancho queda explícito |
+| `PRICE_SPREAD` | ±12 % | Rango para negociar en lugar de un "precio exacto" que se lee como contrato |
+
+La hora se resuelve con `Intl.DateTimeFormat` en `America/Caracas` (`getVenezuelaHour`), no con la
+hora del dispositivo, para que la franja horaria no dependa de cómo esté configurado el equipo.
+
+### Moneda
+
+Los importes van en **USD ("divisa")**, la unidad en la que hoy cotizan los conductores
+independientes en Venezuela. Pendiente (Fase 7+): conversión a bolívares con la tasa BCV del día.
+
+### Capacidades y validación
+
+| Vehículo | Pasajeros máx. | Viaje mínimo |
+| --- | --- | --- |
+| Moto | 2 | $1,50 |
+| Sedán | 5 | $2,50 |
+| SUV | 6 | $3,50 |
+| Van | 6 | $4,50 |
+
+La capacidad vive en `VEHICLE_TARIFFS` (`lib/pricing.ts`) y el formulario la lee con
+`getVehicleCapacity`. Si el usuario pide más pasajeros de los que caben, `QuoteForm` muestra el aviso
+junto al campo ("Esta moto no puede llevar 6 pasajeros (máximo 2).") y **no se calcula precio**: la
+tarjeta explica "Esta combinación no es posible".
+
+### Precio en vivo (Fase 6)
+
+No hay que pulsar nada para cotizar:
+
+```text
+QuoteForm --onRequestChange(QuoteRequest)--> app/page.tsx
+                                              |
+              useRoute (OSRM) --> route ------+--> useMemo(estimatePrice) --> PriceCard
+```
+
+- `estimatePrice` es puro: cambiar de vehículo o de pasajeros recalcula el precio al instante y sin
+  red (la ruta ya está calculada por `useRoute`).
+- `components/PriceCard.tsx` (sustituye a `RouteInfoCard`) muestra el rango, el contexto del viaje
+  (km, minutos, vehículo, pasajeros) y un desglose colapsable (`<details>` nativo: sin dependencias,
+  accesible y con filas que suman exactamente el precio recomendado).
+- Estados de la tarjeta: calculando · precio · "Completa origen y destino para ver el precio." ·
+  "No se pudo calcular la ruta" · "Esta combinación no es posible. Revisa el vehículo y el número de
+  pasajeros."
+- El botón "Ver precio estimado" no calcula: desplaza la vista y el foco a la tarjeta (en móvil queda
+  debajo del mapa). Antes de la Fase 6 el formulario solo escribía el envío en la consola.
+
+### Pendiente
+
+- Convertir el precio a bolívares con la tasa BCV del día (Fase 7).
+- Calibrar `VEHICLE_TARIFFS` y `TRAFFIC_BANDS` con viajes reales cuando exista Supabase.
+- Tráfico en vivo (TomTom/HERE) y clima (Open-Meteo) en lugar de las heurísticas estáticas.
+- Si el usuario deja la página abierta y cruza una franja horaria (p. ej. las 22:00), el precio se
+  actualiza al siguiente cambio de ruta/vehículo/pasajeros: falta un reloj que lo refresque solo.
+- Instalar Vitest y convertir en suite permanente las comprobaciones del motor (Fase 9).
 
 ## Comandos
 
