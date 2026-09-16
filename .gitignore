@@ -35,6 +35,9 @@ yarn-error.log*
 # ...pero el archivo de ejemplo SÍ se versiona (nunca contiene valores reales)
 !.env.local.example
 
+# scratch local (scripts de prueba temporales)
+.tmp-geotest/
+
 # vercel
 .vercel
 

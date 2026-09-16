@@ -15,6 +15,8 @@
  * que para Venezuela ya vienen en español.
  */
 
+import { searchPopularPlaces, PopularPlace } from "./popularPlaces";
+
 export interface GeocodeResult {
   lat: number;
   lng: number;
@@ -35,6 +37,15 @@ export interface GeocodeResult {
 const PHOTON_API_URL = "https://photon.komoot.io/api/";
 /** bbox de Venezuela para Photon: minLon,minLat,maxLon,maxLat. */
 const VENEZUELA_BBOX = "-73.5,0.6,-59.5,12.5";
+/**
+ * Punto de sesgo geográfico: centro de Caracas. Photon prioriza los resultados cercanos
+ * a este punto, que es donde se concentra la población y la operación inicial de la app.
+ *
+ * TODO (fase de geolocalización): reemplazar este punto fijo por la posición real del
+ * usuario (`navigator.geolocation`) en lugar del centro de Caracas.
+ */
+const BIAS_LATITUDE = "10.48";
+const BIAS_LONGITUDE = "-66.90";
 const USER_AGENT = "cotizador-transporte/0.1 (dev)";
 
 /** Intervalo mínimo entre peticiones reales a Photon (1 req/seg). */
@@ -54,6 +65,11 @@ export const MAX_SUGGESTION_LIMIT = 6;
  * scoreAndSortResults pueda reordenar antes de recortar a MAX_SUGGESTION_LIMIT.
  */
 const PHOTON_FETCH_LIMIT = 20;
+/**
+ * Radio (metros) bajo el cual un resultado de Photon se considera el MISMO lugar que uno
+ * de la lista local y se descarta, para no mostrar dos veces el mismo sitio.
+ */
+const DEDUPE_RADIUS_METERS = 150;
 const REQUEST_TIMEOUT_MS = 8000;
 
 /**
@@ -111,35 +127,63 @@ const SCORE_NAME_PREFIX = 100;
 const SCORE_NAME_CONTAINS = 80;
 const SCORE_DISPLAY_PREFIX = 60;
 const SCORE_DISPLAY_CONTAINS = 40;
-/**
- * Pequeño extra para POIs comerciales cuando la coincidencia NO es por prefijo:
- * "Centro Comercial Sambil" (80 + 15 = 95) adelanta a los locales vecinos (80) sin
- * llegar a superar a los nombres que empiezan por la consulta (100).
- */
-const SCORE_COMMERCIAL_BOOST = 15;
+
+/** Estados de la región central: donde vive la mayor parte de la población y operará la app. */
+const CENTRAL_REGION_STATES = [
+  "miranda",
+  "distrito capital",
+  "aragua",
+  "carabobo",
+  "la guaira",
+  "vargas", // nombre anterior del estado La Guaira
+];
+/** Extra por pertenecer a la región central (comparado sin acentos ni mayúsculas). */
+const SCORE_CENTRAL_REGION_BOOST = 20;
+
 const COMMERCIAL_OSM_VALUES = new Set(["mall", "commercial", "retail"]);
+/**
+ * Extra para centros comerciales en coincidencias por "contiene". Es mayor que el de
+ * región a propósito: medido con Photon, "Sambilito" (parking en Carabobo) es prefijo +
+ * región (100 + 20 = 120), así que con un extra menor los malls quedarían por detrás.
+ * Con 25: "Centro Comercial Sambil" (80 + 20 + 25 = 125) gana a ese parking (120).
+ */
+const SCORE_COMMERCIAL_BOOST = 25;
 
 /**
- * TODO (fase de geolocalización): priorizar por proximidad geográfica del usuario.
- * Cuando el navegador aporte su posición se puede (a) enviar `lat`/`lon` a Photon para
- * sesgar su propio ranking y (b) sumar aquí un bonus por distancia (haversine).
- * Hoy no hay geolocalización, así que el orden es únicamente textual.
+ * TODO (fase de geolocalización): sustituir el sesgo fijo de Caracas (BIAS_LATITUDE /
+ * BIAS_LONGITUDE, ya enviado a Photon) por la posición real del usuario y, si hace falta,
+ * sumar aquí un bonus por distancia (haversine) en vez del boost fijo por estado.
  */
-function boostCommercialScore(score: number, result: GeocodeResult): number {
-  return COMMERCIAL_OSM_VALUES.has(normalize(result.osmValue))
-    ? score + SCORE_COMMERCIAL_BOOST
-    : score;
+
+/** ¿El resultado está en la región central de Venezuela? Compara sin acentos ni mayúsculas. */
+function isInCentralRegion(result: GeocodeResult): boolean {
+  const state = normalize(result.state);
+  if (state.length === 0) return false;
+
+  // `includes` cubre variantes tipo "Estado Miranda".
+  return CENTRAL_REGION_STATES.some((centralState) => state.includes(centralState));
+}
+
+/** ¿Es un POI comercial (centro comercial)? */
+function isCommercialPlace(result: GeocodeResult): boolean {
+  return COMMERCIAL_OSM_VALUES.has(normalize(result.osmValue));
 }
 
 /**
- * Reordena los candidatos de Photon por relevancia respecto a la consulta:
- * shortName que empieza por ella (100) > shortName que la contiene (80) >
- * displayName que empieza por ella (60) > displayName que la contiene (40) > resto (0).
- * Las coincidencias por "contiene" en POIs comerciales (mall/commercial/retail) suman
- * un pequeño extra para que un centro comercial gane a los locales de su interior.
+ * Reordena los candidatos de Photon por relevancia respecto a la consulta.
+ * Puntuación = categoría de coincidencia + bonuses:
+ * - categoría: shortName empieza por la query (100) > shortName la contiene (80) >
+ *   displayName empieza por ella (60) > displayName la contiene (40) > resto (0).
+ * - +20 si el lugar está en la región central (Miranda, Distrito Capital, Aragua,
+ *   Carabobo, La Guaira/Vargas): desempata dentro de la misma categoría y hace que
+ *   "Sambil Margarita" (100) caiga frente a opciones de la zona central.
+ * - +25 si la coincidencia es por "contiene" y el POI es comercial (mall/commercial/
+ *   retail): así "Centro Comercial Sambil" (125) gana a "Sambilito" (parking, 120) y
+ *   a "Sambil Margarita" (prefijo fuera de la región, 100).
  *
- * Los empates conservan el orden original de Photon (que ya aplica su propio score);
- * el desempate se hace por índice, así no dependemos de la estabilidad de Array#sort.
+ * Los empates conservan el orden original de Photon (que ya aplica su propio score y
+ * recibe el sesgo de Caracas); el desempate se hace por índice, así no dependemos de
+ * la estabilidad de Array#sort.
  */
 function scoreAndSortResults(results: GeocodeResult[], query: string): GeocodeResult[] {
   const needle = normalize(query);
@@ -148,11 +192,15 @@ function scoreAndSortResults(results: GeocodeResult[], query: string): GeocodeRe
   const scoreOf = (result: GeocodeResult): number => {
     const shortName = normalize(result.shortName);
     const displayName = normalize(result.displayName);
+    const regionBonus = isInCentralRegion(result) ? SCORE_CENTRAL_REGION_BOOST : 0;
 
-    if (shortName.startsWith(needle)) return SCORE_NAME_PREFIX;
-    if (shortName.includes(needle)) return boostCommercialScore(SCORE_NAME_CONTAINS, result);
-    if (displayName.startsWith(needle)) return SCORE_DISPLAY_PREFIX;
-    if (displayName.includes(needle)) return boostCommercialScore(SCORE_DISPLAY_CONTAINS, result);
+    if (shortName.startsWith(needle)) return SCORE_NAME_PREFIX + regionBonus;
+    if (shortName.includes(needle)) {
+      const commercialBonus = isCommercialPlace(result) ? SCORE_COMMERCIAL_BOOST : 0;
+      return SCORE_NAME_CONTAINS + regionBonus + commercialBonus;
+    }
+    if (displayName.startsWith(needle)) return SCORE_DISPLAY_PREFIX + regionBonus;
+    if (displayName.includes(needle)) return SCORE_DISPLAY_CONTAINS + regionBonus;
 
     return 0;
   };
@@ -209,6 +257,9 @@ async function fetchPhotonPlaces(query: string, limit: number): Promise<GeocodeR
     url.searchParams.set("q", query);
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("bbox", VENEZUELA_BBOX);
+    // Sesgo hacia Caracas: Photon prioriza lo cercano a este punto (ver BIAS_LATITUDE).
+    url.searchParams.set("lat", BIAS_LATITUDE);
+    url.searchParams.set("lon", BIAS_LONGITUDE);
     // Sin `lang`: Photon no soporta `es` (HTTP 400) y el valor por defecto ya
     // devuelve el nombre local, que para Venezuela está en español.
 
@@ -319,21 +370,68 @@ const searchPhoton = createCachedSearch(
 );
 
 /**
- * Autocompletado de direcciones con Photon (solo Venezuela).
- * Photon busca por texto libre (no solo por prefijo), así que se pide un pool amplio
- * de candidatos (PHOTON_FETCH_LIMIT) y se reordena por relevancia antes de recortar
- * a `limit`: así las coincidencias en cualquier parte del nombre ganan terreno frente
- * a los POIs "relacionados" que Photon devuelve con score bajo.
+ * Distancia aproximada en metros entre dos coordenadas (haversine).
+ * Suficiente para decidir si dos resultados apuntan al mismo lugar.
+ */
+function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const EARTH_RADIUS_M = 6_371_000;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
+  const deltaLat = toRadians(bLat - aLat);
+  const deltaLng = toRadians(bLng - aLng);
+  const haversine =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(deltaLng / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(haversine)));
+}
+
+/**
+ * Convierte un lugar de la lista local curada al DTO común de geocodificación.
+ * `osmValue` se reutiliza aquí para llevar el tipo curado (mall, airport, hospital...).
+ */
+function popularPlaceToResult(place: PopularPlace): GeocodeResult {
+  return {
+    lat: place.lat,
+    lng: place.lng,
+    displayName: joinUnique([place.name, place.city, place.state, "Venezuela"]),
+    shortName: place.shortName,
+    secondaryText: joinUnique([place.city, place.state]),
+    city: place.city,
+    state: place.state,
+    country: "Venezuela",
+    osmValue: place.type,
+  };
+}
+
+/**
+ * Autocompletado de direcciones: lugares populares curados + Photon (solo Venezuela).
  *
- * @param query Texto parcial escrito por el usuario (ej: "chaca", "sambil", "centro").
- * @param limit Número máximo de sugerencias a devolver (por defecto 5).
- * @returns Lista ordenada por relevancia (vacía si no hay coincidencias o si hubo error).
+ * 1. Los lugares de POPULAR_PLACES que coincidan van SIEMPRE primero: Photon prioriza
+ *    por nombre, no por popularidad (para "el marq" devuelve la urbanización antes que
+ *    el centro comercial).
+ * 2. Después van los candidatos de Photon ordenados por relevancia, descartando los que
+ *    estén a menos de DEDUPE_RADIUS_METERS de un lugar local para no duplicar el sitio.
+ *
+ * @param query Texto parcial escrito por el usuario (ej: "el marq", "ccct", "sambil").
+ * @param limit Número máximo de sugerencias a devolver (por defecto MAX_SUGGESTION_LIMIT).
+ * @returns Lugares populares primero y luego los de Photon.
  */
 export async function autocompleteAddress(
   query: string,
   limit: number = MAX_SUGGESTION_LIMIT
 ): Promise<GeocodeResult[]> {
-  const candidates = await searchPhoton(query, PHOTON_FETCH_LIMIT);
+  const popularResults = searchPopularPlaces(query).map(popularPlaceToResult);
 
-  return scoreAndSortResults(candidates, query).slice(0, limit);
+  const candidates = await searchPhoton(query, PHOTON_FETCH_LIMIT);
+  const photonResults = scoreAndSortResults(candidates, query).filter(
+    (candidate) =>
+      !popularResults.some(
+        (popular) =>
+          distanceMeters(popular.lat, popular.lng, candidate.lat, candidate.lng) <
+          DEDUPE_RADIUS_METERS
+      )
+  );
+
+  return [...popularResults, ...photonResults].slice(0, limit);
 }
