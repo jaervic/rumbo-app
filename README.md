@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# App de Transporte - Estimador de Precios
 
-## Getting Started
+Web-app para estimar precios de transporte para conductores independientes, permitiendo a los usuarios obtener cálculos rápidos basados en origen, destino y tipo de vehículo.
 
-First, run the development server:
+## Stack Tecnológico
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Framework:** [Next.js 15+](https://nextjs.org/) (App Router)
+- **Lenguaje:** [TypeScript](https://www.typescriptlang.org/) (Estricto)
+- **Estilos:** [Tailwind CSS v4](https://tailwindcss.com/)
+- **Componentes:** [shadcn/ui](https://ui.shadcn.com/)
+- **Mapas:** [Leaflet](https://leafletjs.com/) + [OpenStreetMap](https://www.openstreetmap.org/)
+- **Rutas:** [OSRM](http://project-osrm.org/) (Público)
+- **Geocoding:** [Nominatim](https://nominatim.org/)
+- **Base de Datos:** [Supabase](https://supabase.com/) (Próximamente)
+
+## Estructura de Carpetas
+
+```text
+app/            # Rutas y componentes de página (Next.js App Router)
+components/     # Componentes reutilizables
+  ui/           # Componentes de base (shadcn/ui)
+lib/            # Utilidades y lógica de negocio (pricing, fetching, etc.)
+types/          # Definiciones de tipos TypeScript
+public/         # Assets estáticos
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Comandos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Instalación
+```bash
+npm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Desarrollo
+```bash
+npm run dev
+```
 
-## Learn More
+### Producción
+```bash
+npm run build
+npm run start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Configuración
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Copia `.env.local.example` a `.env.local`.
+2. Completa las variables de entorno necesarias.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
