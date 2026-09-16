@@ -27,7 +27,9 @@ export default function Home() {
         </header>
 
         <div className="grid gap-8 md:grid-cols-12 items-start">
-          <aside className="md:col-span-5 lg:col-span-4">
+          {/* z-index propio para que el dropdown de sugerencias quede por encima
+              de los panes de Leaflet (que usan z-index de hasta ~800) en móvil. */}
+          <aside className="relative z-[900] md:col-span-5 lg:col-span-4">
             <QuoteForm onCoordsChange={handleCoordsChange} />
           </aside>
 

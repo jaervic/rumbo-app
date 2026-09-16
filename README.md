@@ -4,13 +4,13 @@ Web-app para estimar precios de transporte para conductores independientes, perm
 
 ## Stack Tecnológico
 
-- **Framework:** [Next.js 15+](https://nextjs.org/) (App Router)
+- **Framework:** [Next.js 16](https://nextjs.org/) (App Router)
 - **Lenguaje:** [TypeScript](https://www.typescriptlang.org/) (Estricto)
 - **Estilos:** [Tailwind CSS v4](https://tailwindcss.com/)
 - **Componentes:** [shadcn/ui](https://ui.shadcn.com/)
 - **Mapas:** [Leaflet](https://leafletjs.com/) + [OpenStreetMap](https://www.openstreetmap.org/)
-- **Rutas:** [OSRM](http://project-osrm.org/) (Público)
-- **Geocoding:** [Nominatim](https://nominatim.org/)
+- **Rutas:** [OSRM](http://project-osrm.org/) (Público, próxima fase)
+- **Autocompletado de direcciones:** [Photon](https://photon.komoot.io/) (OpenStreetMap, gratis)
 - **Base de Datos:** [Supabase](https://supabase.com/) (Próximamente)
 
 ## Estructura de Carpetas
