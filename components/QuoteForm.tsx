@@ -663,7 +663,14 @@ export default function QuoteForm({
               >
                 <SelectValue placeholder="Tipo de vehículo" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                // Explícitos aunque sean los valores por defecto de SelectContent: documentan en el
+                // punto de uso por dónde debe salir el menú. `side="bottom"` lo abre hacia abajo y,
+                // como Base UI lo alinea con el valor seleccionado, cabe entero en el viewport
+                // móvil (medido en la Fase 5.2: 4 opciones, sin recorte).
+                side="bottom"
+                sideOffset={4}
+              >
                 {/* Nombres y orden salen de lib/pricing.ts: la etiqueta que el usuario ve y la
                     tarifa que se aplica no pueden desincronizarse. */}
                 {VEHICLE_TYPES.map((vehicle) => (

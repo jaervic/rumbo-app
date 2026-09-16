@@ -7,6 +7,27 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
 
+/**
+ * Nivel de apilado del popup del Select.
+ *
+ * El popup se monta en un PORTAL sobre <body>, así que compite en el contexto de apilado RAÍZ de la
+ * página, no dentro del <form>. En esta app ese contexto tiene capas altas (valores verificados en
+ * la Fase 5.2):
+ * - `<aside>` de app/page.tsx: z-index 900 (necesario para que el autocompletado de direcciones
+ *   quede por encima de los panes de Leaflet).
+ * - Leaflet: panes 400–800 y controles de zoom 1000.
+ * - Overlays de MapPicker.tsx: capa táctil z-1000 y overlay de "calculando ruta" z-1100 (el
+ *   contenedor del mapa no crea contexto de apilado propio, así que suben al contexto raíz).
+ *
+ * Con `z-50` el popup quedaba PINTADO DEBAJO de todo eso: el dropdown de "Vehículo" salía invisible
+ * (lo tapaba la tarjeta del formulario) y no se podía clicar. Medido con `document.elementFromPoint`
+ * en 5 puntos del popup: devolvía el formulario, no el popup.
+ *
+ * 1200 queda por encima del máximo de la app (1100) SIN EMPATAR: un empate lo resolvería el orden
+ * del DOM, que es frágil (el portal cuelga de <body> y el mapa vive en el árbol de la página).
+ */
+const SELECT_POPUP_Z_CLASS = "z-[1200]"
+
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group
@@ -77,12 +98,12 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
-        className="isolate z-50"
+        className={cn("isolate", SELECT_POPUP_Z_CLASS)}
       >
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
-          className={cn("relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+          className={cn("relative isolate max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", SELECT_POPUP_Z_CLASS, className )}
           {...props}
         >
           <SelectScrollUpButton />
