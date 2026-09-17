@@ -2,11 +2,17 @@
 
 /**
  * Editor de tarifas propias (Fase 6.2, Nivel 1): bandera de bajada, costo por km, costo por minuto y
- * tarifa mínima, con validación en vivo y un ejemplo de precio.
+ * tarifa mínima, con validación en vivo y dos ejemplos de precio (viaje normal y viaje corto).
  *
- * El ejemplo se calcula con `estimatePrice` sobre una ruta FICTICIA (5 km, 15 min, 1 pasajero): el
- * motor es puro, así que no hay ninguna llamada a OSRM ni a Photon desde aquí. Con 1 pasajero no hay
- * recargo por pasajero, así que el número depende solo de las tarifas que se están editando.
+ * Fase 6.2.2 — "bandera" vs "tarifa mínima": son cosas distintas y se confunden. La bandera es un
+ * cargo FIJO que se suma SIEMPRE (aunque el viaje sea de 100 metros); la mínima es un PISO: si el
+ * cálculo total no llega, se cobra el piso. Por eso cada campo lleva su explicación debajo del label y
+ * el segundo ejemplo enseña el caso corto, que es donde el piso puede entrar en juego.
+ *
+ * Los ejemplos se calculan con la fórmula DESNUDA (bandera + km + minutos, redondeando por concepto
+ * como el motor) y NO con `estimatePrice`: así el conductor puede comprobarlos de cabeza. El precio
+ * real de la app añade factores (tráfico, nocturno) y el rango de negociación ±12 %, y el pie de los
+ * ejemplos lo dice. Nada de esto llama a OSRM ni a Photon.
  *
  * El editor guarda NÚMEROS en el padre (los que consume el motor) pero conserva un borrador de texto
  * por campo: un input numérico controlado con números no deja escribir "0." ni vaciar el campo. Un
@@ -27,15 +33,34 @@ import {
   validateTariff,
   type DriverTariffConfig,
 } from "@/lib/driverProfile";
-import { estimatePrice } from "@/lib/pricing";
 
-/** Ruta ficticia del ejemplo (Fase 6.2): kilómetros y minutos fijos, sin red. */
-const PREVIEW_KM = 5;
-const PREVIEW_MIN = 15;
+/** Un viaje de ejemplo: cómo se lee, cuánto dura y si además hay que explicar el piso. */
+interface SampleTrip {
+  /** Cómo se lee en la lista: "Viaje de 5 km, 15 min". */
+  readonly label: string;
+  readonly km: number;
+  readonly minutes: number;
+  /** `true` en el viaje corto: además del número se dice si toca la tarifa mínima (Fase 6.2.2). */
+  readonly checksFloor: boolean;
+}
+
+/**
+ * Viajes de ejemplo (Fase 6.2.2), fijos y sin red: uno normal y otro MUY corto, que es donde se ve si
+ * el cálculo toca la tarifa mínima.
+ */
+const SAMPLE_TRIPS: readonly SampleTrip[] = [
+  { label: "Viaje de 5 km, 15 min", km: 5, minutes: 15, checksFloor: false },
+  { label: "Viaje de 1 km, 3 min", km: 1, minutes: 3, checksFloor: true },
+];
 
 /** Dólares con 2 decimales y coma decimal: "$6,33" (a mano, sin `Intl`: hidratación). */
 function formatUsd(value: number): string {
   return `$${value.toFixed(2).replace(".", ",")}`;
+}
+
+/** Redondeo a céntimos por CONCEPTO, igual que el motor: así los ejemplos suman exacto. */
+function roundCents(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /** Rango del campo tal y como lo lee el conductor: "$0,50 – $10,00". */
@@ -61,6 +86,20 @@ function toDrafts(tariff: DriverTariffConfig): Record<keyof DriverTariffConfig, 
   };
 }
 
+/**
+ * Qué significa cada campo, en palabras del conductor (Fase 6.2.2).
+ *
+ * Es texto de UI y vive aquí, no en `TARIFF_FIELDS` (lib/driverProfile.ts): allí están los rangos y el
+ * `step`, que son datos de validación. La confusión típica es bandera contra tarifa mínima: la bandera
+ * se cobra SIEMPRE al iniciar el viaje; la mínima solo entra si el viaje sale más barato que ese piso.
+ */
+const FIELD_HELP: Record<keyof DriverTariffConfig, string> = {
+  baseFare: "Monto fijo que se cobra por iniciar el viaje.",
+  costPerKm: "Cuánto cobras por cada kilómetro recorrido.",
+  costPerMin: "Cuánto cobras por cada minuto de viaje.",
+  minFare: "Piso del precio. Nunca cobrarás menos que esto, aunque el viaje sea muy corto.",
+};
+
 export interface TariffEditorProps {
   /** Tarifa actual (la del perfil mientras se edita). */
   value: DriverTariffConfig;
@@ -77,15 +116,28 @@ export default function TariffEditor({ value, onChange, className }: TariffEdito
 
   const validation = validateTariff(value);
 
-  const preview = useMemo(
+  /**
+   * Ejemplos en vivo (Fase 6.2.2): fórmula desnuda (bandera + km + minutos), redondeando por concepto
+   * como el motor. `floorApplied` marca cuándo manda la tarifa mínima, que es justo lo que hay que ver
+   * para entender la diferencia con la bandera.
+   */
+  const samples = useMemo(
     () =>
       validation.valid
-        ? estimatePrice({
-            distanceKm: PREVIEW_KM,
-            durationIdealMin: PREVIEW_MIN,
-            vehicleType: "sedan",
-            passengers: 1,
-            tariffOverride: value,
+        ? SAMPLE_TRIPS.map((trip) => {
+            const concepts = roundCents(
+              roundCents(value.baseFare) +
+                roundCents(trip.km * value.costPerKm) +
+                roundCents(trip.minutes * value.costPerMin)
+            );
+            const floorApplied = concepts < value.minFare;
+
+            return {
+              ...trip,
+              concepts,
+              floorApplied,
+              total: floorApplied ? roundCents(value.minFare) : concepts,
+            };
           })
         : null,
     [validation.valid, value]
@@ -114,6 +166,10 @@ export default function TariffEditor({ value, onChange, className }: TariffEdito
               {field.label}
               <span className="ml-auto text-xs font-normal text-muted-foreground">USD</span>
             </Label>
+
+            {/* Fase 6.2.2: qué significa este campo, justo debajo del label. `text-xs` para que no
+                rompa el layout en móvil (es el mismo tamaño que el rango y los errores). */}
+            <p className="text-xs text-muted-foreground">{FIELD_HELP[key]}</p>
 
             <div className="relative">
               {/* Símbolo de moneda fijo a la izquierda; el input lleva padding para no pisarlo. */}
@@ -156,18 +212,49 @@ export default function TariffEditor({ value, onChange, className }: TariffEdito
         );
       })}
 
-      {/* Ejemplo en vivo: se recalcula a cada tecla con el motor real, sin red (ruta ficticia). */}
-      <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
-        <p className="text-xs font-medium text-foreground">
-          Ejemplo: {PREVIEW_KM} km, {PREVIEW_MIN} min, 1 pasajero →{" "}
-          <span className="tabular-nums">
-            {preview === null ? "—" : formatUsd(preview.priceAvg)}
-          </span>
-        </p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {preview === null
-            ? "Revisa los valores marcados para ver el ejemplo."
-            : "Con el tráfico de esta hora; el rango de negociación (±12 %) no se incluye."}
+      {/* Ejemplos en vivo (Fase 6.2.2): la fórmula desnuda, para que el conductor la compruebe de
+          cabeza. El segundo es corto a propósito: es donde se ve si entra la tarifa mínima. */}
+      <div className="space-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+        {samples === null ? (
+          <p className="text-xs text-muted-foreground">
+            Revisa los valores marcados para ver los ejemplos.
+          </p>
+        ) : (
+          samples.map((sample) => (
+            <div key={sample.label} className="space-y-0.5">
+              <p className="text-xs font-medium text-foreground">
+                {sample.label} →{" "}
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    sample.floorApplied && "text-amber-600 dark:text-amber-400"
+                  )}
+                >
+                  {formatUsd(sample.total)}
+                </span>
+              </p>
+
+              {/* Piso aplicado (Fase 6.2.2): se dice y se pinta en ámbar para que se entienda que ese
+                  importe es el suelo, no el cálculo. */}
+              {sample.floorApplied && (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                  Se aplica la tarifa mínima de {formatUsd(value.minFare)}.
+                </p>
+              )}
+
+              {/* En el viaje corto se dice también cuándo NO entra el piso: saber que el cálculo lo
+                  supera es exactamente lo que aclara la diferencia con la bandera. */}
+              {sample.checksFloor && !sample.floorApplied && (
+                <p className="text-xs text-muted-foreground">
+                  El cálculo ({formatUsd(sample.concepts)}) supera la tarifa mínima.
+                </p>
+              )}
+            </div>
+          ))
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          Ejemplos sin factores de tráfico ni rango de negociación (±12 %).
         </p>
       </div>
 

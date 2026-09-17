@@ -109,7 +109,7 @@ function DriverProfileForm({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Cabecera: título, subtítulo y el aspa de cerrar (Dialog.Close = "cerrar sin guardar"). */}
-      <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+      <header className="flex items-start justify-between gap-3 border-b border-border px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="text-base font-semibold text-foreground">
             Mi perfil de conductor
@@ -124,7 +124,7 @@ function DriverProfileForm({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Cerrar sin guardar"
+              aria-label="Cerrar"
               className="shrink-0"
             />
           }
@@ -134,8 +134,9 @@ function DriverProfileForm({
       </header>
 
       {/* Cuerpo con scroll interno: el pie con los botones queda fijo y siempre al alcance del pulgar. */}
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
         <div className="grid gap-2">
+          <h3 className="text-sm font-semibold text-foreground">Tu nombre</h3>
           <Label htmlFor="driver-name">Nombre</Label>
           <Input
             id="driver-name"
@@ -201,7 +202,9 @@ function DriverProfileForm({
         {/* Borrar perfil con confirmación en el sitio (nada de un diálogo dentro de otro) y solo si hay
             algo que borrar. */}
         {profile !== null && (
-          <div className="rounded-lg border border-border p-3">
+          /* Al final del cuerpo y separado por una línea: no compite con "Guardar" y deja claro que
+             es una acción destructiva (rojo sutil, con confirmación en el sitio). */
+          <div className="border-t border-border pt-4">
             {confirmingDelete ? (
               <div className="space-y-2">
                 <p className="text-xs text-foreground">¿Seguro que quieres borrar tu perfil?</p>
@@ -242,17 +245,10 @@ function DriverProfileForm({
         )}
       </div>
 
-      {/* Pie fijo: "Guardar" siempre visible y deshabilitado mientras haya algo que corregir. */}
-      <footer className="space-y-2 border-t border-border px-4 py-3 sm:px-5">
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-          className="min-h-12 w-full text-base font-semibold md:min-h-0 md:text-sm"
-        >
-          <Check className="size-4" aria-hidden="true" />
-          Guardar
-        </Button>
+      {/* Pie: el aviso de por qué no se puede guardar (si aplica) y la fila de acciones. "Guardar" va
+          a la derecha y "Cancelar" a la izquierda (Dialog.Close = cerrar sin guardar). En móvil los dos
+          botones se reparten el ancho para que sean cómodos con el pulgar. */}
+      <footer className="space-y-3 border-t border-border px-5 py-4 sm:px-6">
         {!canSave && (
           <p className="text-xs text-muted-foreground" role="status">
             {nameError ??
@@ -261,19 +257,34 @@ function DriverProfileForm({
                 : "Revisa las tarifas marcadas.")}
           </p>
         )}
-        <Dialog.Close
-          render={<Button type="button" variant="ghost" className="min-h-11 w-full md:min-h-0" />}
-        >
-          Cerrar sin guardar
-        </Dialog.Close>
+
+        <div className="flex items-center justify-end gap-2">
+          <Dialog.Close
+            render={
+              <Button type="button" variant="outline" className="min-h-11 flex-1 sm:flex-none" />
+            }
+          >
+            Cancelar
+          </Dialog.Close>
+
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave}
+            className="min-h-11 flex-1 font-semibold sm:flex-none sm:px-5"
+          >
+            <Check className="size-4" aria-hidden="true" />
+            Guardar
+          </Button>
+        </div>
       </footer>
     </div>
   );
 }
 
 /**
- * Panel del conductor: el Dialog de Base UI estilizado como sheet (abajo en móvil, lateral derecho
- * desde `sm`).
+ * Panel del conductor: el Dialog de Base UI (sheet abajo en móvil y tarjeta centrada de 512 px desde
+ * `sm`, con scroll interno si el contenido no cabe).
  *
  * Z-index: backdrop 1150 y popup 1160 van por ENCIMA de Leaflet (hasta 1100) y por DEBAJO de los
  * popups de los Select (1200, ver components/ui/select.tsx). Importa: dentro del panel hay tres
@@ -285,16 +296,32 @@ export default function DriverProfilePanel({
   onSaved,
 }: DriverProfilePanelProps) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    /* `disablePointerDismissal` es la prop de Base UI que apaga el cierre por PULSACIÓN EXTERIOR
+        (`DialogRoot.d.ts`: "Whether to prevent the dialog from closing on outside presses"), y era
+        la que cerraba el panel al tocar un campo: esa pulsación se interpretaba como interacción
+        fuera del diálogo. Con esto el panel solo se cierra por sus propios botones (X, Cancelar,
+        Guardar) y por el overlay, que se maneja a mano en el Backdrop. Escape sigue funcionando: la
+        prop solo desactiva el puntero, no el teclado. */
+    <Dialog.Root open={open} onOpenChange={onOpenChange} disablePointerDismissal>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-[1150] bg-black/40 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+        <Dialog.Backdrop
+          // Único camino de "clic afuera": el overlay cierra solo si el clic fue REALMENTE en él
+          // (`target === currentTarget`). Así un clic que caiga dentro del panel nunca lo cierra, ni
+          // aunque el apilado de capas cambiara.
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onOpenChange(false);
+          }}
+          className="fixed inset-0 z-[1150] bg-black/40 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        />
         <Dialog.Popup
           className={cn(
-            "fixed z-[1160] flex max-h-[92dvh] w-full flex-col overflow-hidden border border-border bg-card text-sm shadow-lg outline-none",
+            "fixed z-[1160] flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden border border-border bg-card text-sm shadow-lg outline-none",
             // Móvil: sheet desde abajo, ancho completo y esquinas superiores redondeadas.
             "inset-x-0 bottom-0 rounded-t-2xl",
-            // Desde `sm`: panel lateral derecho a pantalla completa (y sin esquinas arriba).
-            "sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[26rem] sm:rounded-none sm:rounded-l-2xl",
+            // Desde `sm`: tarjeta CENTRADA de 512 px como máximo, en lugar de estirarse a todo el ancho.
+            // (Centrar con translate evita el conflicto entre `h-full` y `max-h` que tenía el sheet
+            // lateral, que era lo que dejaba el panel demasiado grande en desktop.)
+            "sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl",
             "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
           )}
         >
