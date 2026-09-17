@@ -22,6 +22,8 @@ const INITIAL_REQUEST: QuoteRequest = {
   destination: "",
   passengers: 1,
   vehicleType: "sedan",
+  // Fase 6.1: vehículo del catálogo (marca/modelo/año) que envía QuoteForm; null = no elegido.
+  vehicle: null,
 };
 
 export default function Home() {

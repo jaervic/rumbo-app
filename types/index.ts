@@ -1,10 +1,35 @@
 export type VehicleType = "moto" | "sedan" | "suv" | "van";
 
+/**
+ * Vehículo concreto elegido del catálogo de la Fase 6.1 (marca + modelo + año).
+ *
+ * Los ids son los del catálogo local (`lib/vehicleCatalog.ts`), no nombres legibles: el texto se
+ * resuelve con `describeVehicle` al pintarlo, así que renombrar "Chevrolet" a "Chevy" mañana no
+ * invalida las selecciones ya guardadas.
+ *
+ * TODO (Fase 6.2): hoy esta selección NO cambia el precio — el motor sigue tarifando por
+ * `vehicleType`, que se DEDUCE del modelo con `getVehicleTypeFromSelection` —. Cuando llegue el
+ * factor por antigüedad, `year` es el dato que lo alimenta.
+ */
+export interface VehicleSelection {
+  /** id de marca del catálogo, p. ej. "toyota". */
+  brandId: string;
+  /** id de modelo del catálogo, p. ej. "toyota-corolla". */
+  modelId: string;
+  /** Año del modelo, dentro del rango de venta que declara el catálogo. */
+  year: number;
+}
+
 export interface QuoteRequest {
   origin: string;
   destination: string;
   passengers: number;
   vehicleType: VehicleType;
+  /**
+   * Vehículo del catálogo (Fase 6.1). `null` = no lo eligió o su carro no está en la lista ("Otra
+   * marca"): en ese caso manda `vehicleType`, que sigue siendo el único dato que tarifa el precio.
+   */
+  vehicle: VehicleSelection | null;
 }
 
 /**

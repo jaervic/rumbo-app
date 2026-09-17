@@ -97,9 +97,40 @@ QuoteForm --onRequestChange(QuoteRequest)--> app/page.tsx
 - El botón "Ver precio estimado" no calcula: desplaza la vista y el foco a la tarjeta (en móvil queda
   debajo del mapa). Antes de la Fase 6 el formulario solo escribía el envío en la consola.
 
+### Catálogo de vehículos (Fase 6.1)
+
+`lib/vehicleCatalog.ts` es la tabla local de marca + modelo + año (sin red y sin API key), siguiendo
+el patrón de `lib/popularPlaces.ts`: semilla compacta, ids estables (`toyota-corolla`) y funciones
+puras. El selector es `components/VehicleCatalogPicker.tsx` (cascada marca → modelo → año).
+
+```text
+QuoteForm (VehicleCatalogPicker)
+        |
+        | getVehicleTypeFromSelection(selección)   <- el TIPO se deduce del modelo
+        v
+QuoteRequest { ..., vehicleType, vehicle: { brandId, modelId, year } | null }
+```
+
+- **El tipo de vehículo se deduce del modelo**: la ficha del vehículo y lo que tarifa el precio no
+  pueden contradecirse. Elegir un modelo fija el año más nuevo disponible (dos toques bastan).
+- **"Otra marca / no está en la lista"** sale del catálogo y devuelve el control al select manual de
+  tipo. Mientras haya un vehículo del catálogo elegido, ese select se **deshabilita** (el tipo es un
+  dato derivado del modelo) y el aviso que va justo debajo explica la salida: así el vehículo que se
+  describe y el que se tarifa no pueden contradecirse.
+- **El año no cambia el precio todavía** (`estimatePrice` sigue tarifando por tipo y pasajeros). El
+  factor por antigüedad queda apuntado en el `TODO (Fase 6.2)` de `lib/pricing.ts`: el dato ya viaja
+  en `QuoteRequest.vehicle`, así que no hará falta tocar el formulario.
+- `PriceCard` muestra el vehículo real: "Toyota Corolla 2015 (Sedán) · 3 pasajeros (2 adicionales)".
+- Marcas y modelos van en orden de prevalencia en el parque venezolano (carros primero, motos al
+  final) y los años son el rango en el que el modelo se vendió: `yearTo === null` = sigue a la venta.
+- La lista de años se corta en `MAX_VEHICLE_YEAR`, una constante escrita a mano (no la fecha del
+  sistema) para que el HTML del servidor y el del cliente coincidan: la hidratación manda.
+
 ### Pendiente
 
 - Convertir el precio a bolívares con la tasa BCV del día (Fase 7).
+- Factor por antigüedad del vehículo (Fase 6.2) y revisión del catálogo: años por generación y las
+  marcas de moto que faltan (Vento, Ryan, Motomel...).
 - Calibrar `VEHICLE_TARIFFS` y `TRAFFIC_BANDS` con viajes reales cuando exista Supabase.
 - Tráfico en vivo (TomTom/HERE) y clima (Open-Meteo) en lugar de las heurísticas estáticas.
 - Si el usuario deja la página abierta y cruza una franja horaria (p. ej. las 22:00), el precio se

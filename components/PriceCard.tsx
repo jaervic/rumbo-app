@@ -25,6 +25,7 @@
 import type { Ref } from "react";
 import { ChevronDown, Clock, Loader2, Ruler, TriangleAlert, Users, Wallet } from "lucide-react";
 import { VEHICLE_LABELS, type PriceEstimate } from "@/lib/pricing";
+import { describeVehicle } from "@/lib/vehicleCatalog";
 import type { RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 import type { QuoteRequest } from "@/types";
@@ -82,6 +83,23 @@ function formatMultiplier(factor: number): string {
 /** Recargo expresado en porcentaje: 1.15 → "+15 %". */
 function formatFactor(factor: number): string {
   return `+${Math.round((factor - 1) * 100)} %`;
+}
+
+/**
+ * Nombre del vehículo para el contexto del viaje.
+ *
+ * Con catálogo (Fase 6.1) se muestra el vehículo real con su categoría entre paréntesis —
+ * "Toyota Corolla 2015 (Sedán)" — porque la categoría es la que explica el precio y no debe quedar
+ * implícita. Sin catálogo, o con un id que ya no exista (dato viejo o manipulado), se cae a la
+ * categoría sola, que es como se mostraba antes de esta fase.
+ */
+function getVehicleLabel(request: QuoteRequest): string {
+  const category = VEHICLE_LABELS[request.vehicleType];
+  const { vehicle } = request;
+  if (vehicle === null) return category;
+
+  const description = describeVehicle(vehicle);
+  return description === null ? category : `${description} (${category})`;
 }
 
 /** Redondeo a céntimos para las diferencias que se muestran (evita 0,21999999999999997). */
@@ -247,7 +265,8 @@ export default function PriceCard({
           price={price}
           route={route}
           passengers={request.passengers}
-          vehicleLabel={VEHICLE_LABELS[request.vehicleType]}
+          // Catálogo (Fase 6.1): con marca, modelo y año se muestra el carro real; ver getVehicleLabel.
+          vehicleLabel={getVehicleLabel(request)}
         />
       ) : !hasCoords ? (
         <p className="flex items-center gap-2 text-muted-foreground">

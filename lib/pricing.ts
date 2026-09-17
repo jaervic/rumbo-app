@@ -44,6 +44,13 @@
  * - `calculatePrice` queda para cuando NO hay ruta previa (p. ej. desde un Route Handler en la
  *   Fase 7, o desde una cotización guardada). No se usa en la UI para no pedir dos veces la ruta.
  *
+ * TODO (Fase 6.2): factor por ANTIGÜEDAD del vehículo. `QuoteRequest.vehicle` (marca, modelo y año;
+ * catálogo en lib/vehicleCatalog.ts) ya llega hasta aquí, y el catálogo expone `getVehicleModelYears`
+ * y `describeVehicle`, así que el factor se puede añadir sin tocar el formulario ni el flujo de
+ * datos: `PricingInput` recibiría la selección, el factor se aplicaría al subtotal y PriceCard
+ * añadiría su fila al desglose. NO se implementa todavía porque ningún dato dice cuánto pesa la
+ * antigüedad: sin eso sería un número inventado moviendo el precio (ver la nota de calibración).
+ *
  * TODO (Fase 9): instalar Vitest y convertir en suite permanente las comprobaciones que se hicieron
  * a mano para validar este motor (duración ajustada, viaje mínimo, recargo nocturno, rango ±12 %,
  * desglose que suma exacto y los casos que deben devolver `null`). Hoy el proyecto no tiene runner.
