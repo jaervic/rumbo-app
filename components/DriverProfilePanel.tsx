@@ -41,7 +41,7 @@ import {
   type DriverProfile,
   type DriverTariffConfig,
 } from "@/lib/driverProfile";
-import { VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
+import { formatVehicleType, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import { PASSENGER_CAPACITY, type VehicleType } from "@/types";
 import type { Vehicle } from "@/types/vehicle";
@@ -166,6 +166,10 @@ function DriverProfileForm({
             <Label htmlFor="driver-vehicle-type">Tipo de vehículo</Label>
             <Select
               value={vehicleType}
+              // `items` (Fase 8.1): el `Select.Value` de Base UI solo pinta la ETIQUETA del item si el
+              // Root recibe el mapa valor → etiqueta; sin él renderiza el valor CRUDO y el trigger
+              // mostraba "sedan" en minúsculas en lugar de "Sedán".
+              items={VEHICLE_LABELS}
               onValueChange={(value) => {
                 if (value) handleVehicleTypeChange(value);
               }}
@@ -179,7 +183,7 @@ function DriverProfileForm({
               <SelectContent side="bottom" sideOffset={4}>
                 {VEHICLE_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
-                    {VEHICLE_LABELS[type]}
+                    {formatVehicleType(type)}
                   </SelectItem>
                 ))}
               </SelectContent>

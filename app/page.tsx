@@ -178,6 +178,9 @@ export default function Home() {
               // Fase 6.2: el tipo del vehículo del perfil se pre-selecciona mientras el usuario no lo
               // cambie a mano en este formulario (ver `defaultVehicleType` en QuoteForm).
               defaultVehicleType={profile?.vehicle.vehicleType}
+              // Fase 8.1: el vehículo guardado en el perfil se muestra en el formulario como chip
+              // informativo ("Vehículo: Toyota Corolla 2015"), sin obligar a abrir el catálogo.
+              profileVehicle={profile?.vehicle ?? null}
             />
           </aside>
 

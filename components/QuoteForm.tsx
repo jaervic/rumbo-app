@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
-import { Check, Loader2, Locate, LocateFixed, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, Locate, LocateFixed, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,13 +21,30 @@ import {
   MIN_QUERY_LENGTH,
   GeocodeResult,
 } from "@/lib/geocoding";
-import { VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
-import { getVehicleTypeFromSelection } from "@/lib/vehicleCatalog";
+import { formatVehicleType, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
+import { describeVehicle, getVehicleTypeFromSelection } from "@/lib/vehicleCatalog";
 import { Coords, MapSelectionMode, PASSENGER_CAPACITY, QuoteCoords, QuoteRequest, VehicleSelection, VehicleType } from "@/types";
+import type { Vehicle } from "@/types/vehicle";
 import { useUserLocation, type UserLocation } from "@/hooks/useUserLocation";
 
 /** Debounce de escritura antes de pedir sugerencias a Photon. */
 const GEOCODE_DEBOUNCE_MS = 500;
+
+/**
+ * Tolerancia de movimiento del gesto sobre una sugerencia (Fase 8.1), en píxeles: por encima de esto el
+ * gesto se interpreta como scroll de la lista y NO como un tap. Un tap real en táctil arrastra unos
+ * pocos píxeles, así que 10 px distingue "quiero seleccionar" de "estoy desplazando la lista".
+ */
+const TAP_MOVE_TOLERANCE_PX = 10;
+
+/**
+ * Ventana para descartar el evento REPETIDO del mismo gesto (Fase 8.1), en ms: un tap en móvil entrega
+ * `pointerup` y después `click`, y solo el primero debe seleccionar.
+ */
+const SELECT_DEDUPE_MS = 600;
+
+/** Solo dígitos (o vacío, mientras el usuario borra para reescribir el campo "Pasajeros"). */
+const PASSENGERS_ALLOWED_PATTERN = /^\d*$/;
 
 /**
  * Cómo se nombra el vehículo dentro de una frase ("Máximo 1 pasajero para moto"). Es texto de UI
@@ -42,14 +59,35 @@ const VEHICLE_SENTENCE_NAMES: Record<VehicleType, string> = {
 };
 
 /**
- * Aviso del ajuste del campo "Pasajeros" (Fase 5.3): "Máximo 1 pasajero para moto" · "Máximo 5
- * pasajeros para sedán". El singular importa: "1 pasajeros" es el tipo de detalle que hace dudar del
- * resto de los números de la app.
+ * Texto del límite de pasajeros, con el prefijo que lo introduce. El singular importa: "1 pasajeros"
+ * es el tipo de detalle que hace dudar del resto de los números de la app.
  */
-function formatCapacityNotice(vehicleType: VehicleType, maxPassengers: number): string {
-  return `Máximo ${maxPassengers} ${maxPassengers === 1 ? "pasajero" : "pasajeros"} para ${
+function formatCapacityText(
+  prefix: string,
+  vehicleType: VehicleType,
+  maxPassengers: number
+): string {
+  return `${prefix} ${maxPassengers} ${maxPassengers === 1 ? "pasajero" : "pasajeros"} para ${
     VEHICLE_SENTENCE_NAMES[vehicleType]
   }`;
+}
+
+/**
+ * Aviso del ajuste del campo "Pasajeros" (Fase 5.3): "Máximo 1 pasajero para moto" · "Máximo 5
+ * pasajeros para sedán". Habla de un HECHO —"lo que pediste no cabe"—, así que solo aparece tras un
+ * recorte.
+ */
+function formatCapacityNotice(vehicleType: VehicleType, maxPassengers: number): string {
+  return formatCapacityText("Máximo", vehicleType, maxPassengers);
+}
+
+/**
+ * Helper permanente del campo "Pasajeros" (Fase 8.1): "Máx. 5 pasajeros para sedán". Está siempre
+ * visible para que el techo del campo no haya que adivinarlo; cuando hay recorte lo sustituye el aviso
+ * (mismo dato, otro motivo).
+ */
+function formatCapacityHelper(vehicleType: VehicleType, maxPassengers: number): string {
+  return formatCapacityText("Máx.", vehicleType, maxPassengers);
 }
 
 /**
@@ -96,6 +134,12 @@ export interface QuoteFormProps {
    * deduce— su elección manda y esta prop deja de aplicarse.
    */
   defaultVehicleType?: VehicleType;
+  /**
+   * Vehículo guardado en el perfil del conductor (Fase 8.1). ALIMENTA SOLO el chip informativo
+   * ("Vehículo: Toyota Corolla 2015"): el precio no se lee de aquí — sigue saliendo de `vehicleType`
+   * más las tarifas del perfil, que ya llegan por `defaultVehicleType` y desde app/page.tsx.
+   */
+  profileVehicle?: Vehicle | null;
 }
 
 interface AddressAutocompleteProps {
@@ -153,6 +197,10 @@ function AddressAutocomplete({
   const [isDismissed, setIsDismissed] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Gesto en curso sobre la lista de sugerencias (Fase 8.1): punto donde empezó el toque/clic.
+  const gestureStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Marca de tiempo de la última selección: descarta el evento repetido del mismo gesto.
+  const lastSelectAtRef = useRef(0);
 
   const trimmed = value.trim();
   const isQueryValid = trimmed.length >= MIN_QUERY_LENGTH;
@@ -244,6 +292,54 @@ function AddressAutocomplete({
     setHighlightedIndex(-1);
   };
 
+  /**
+   * Selección de una sugerencia desde un GESTO (Fase 8.1).
+   *
+   * El bug móvil: al tocar la sugerencia, el navegador cerraba ANTES el teclado virtual (blur del
+   * input) y ese primer tap se consumía en el reflow, así que el `click` no llegaba a dispararse y la
+   * coordenada NO se guardaba — origen y destino quedaban como texto sin coordenadas y no se podía
+   * cotizar. Ahora la selección se resuelve en `pointerup`, que se dispara antes de que el navegador
+   * cierre el teclado y unifica táctil y ratón en un solo camino; el `click` queda como respaldo y la
+   * ventana de deduplicación ignora el segundo evento del mismo gesto (no se selecciona dos veces).
+   *
+   * El sello de tiempo llega por parámetro desde el propio evento (`event.timeStamp`): así la función
+   * sigue siendo pura —el linter del compilador de React prohíbe `Date.now()`— y se compara la hora del
+   * `pointerup` con la del `click` que lo repite, que vienen del mismo reloj.
+   */
+  const activateSuggestion = (suggestion: GeocodeResult, eventTimestamp: number) => {
+    // Un `timeStamp` no fiable (0) selecciona igual: mejor repetir la selección que dejar el campo sin
+    // coordenadas y que el viaje no se pueda cotizar.
+    if (eventTimestamp > 0 && eventTimestamp - lastSelectAtRef.current < SELECT_DEDUPE_MS) return;
+
+    lastSelectAtRef.current = eventTimestamp;
+    selectSuggestion(suggestion);
+  };
+
+  /** Punto de partida del gesto: distingue un tap de un arrastre para hacer scroll en la lista. */
+  const handleSuggestionPointerDown = (event: React.PointerEvent<HTMLLIElement>) => {
+    gestureStartRef.current = { x: event.clientX, y: event.clientY };
+  };
+
+  /**
+   * Fin del gesto: solo selecciona si fue un TAP. Un desplazamiento mayor a `TAP_MOVE_TOLERANCE_PX` se
+   * interpreta como scroll de la lista —el dedo puede soltarse encima de una fila distinta de la que
+   * empezó a tocar— y no selecciona nada.
+   */
+  const handleSuggestionPointerUp = (
+    suggestion: GeocodeResult,
+    event: React.PointerEvent<HTMLLIElement>
+  ) => {
+    const start = gestureStartRef.current;
+    gestureStartRef.current = null;
+
+    if (start === null) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_MOVE_TOLERANCE_PX) {
+      return;
+    }
+
+    activateSuggestion(suggestion, event.timeStamp);
+  };
+
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedValue(null); // cualquier edición invalida la selección anterior
     setIsDismissed(false);
@@ -322,7 +418,12 @@ function AddressAutocomplete({
                   role="option"
                   aria-selected={index === activeIndex}
                   title={suggestion.displayName}
-                  onClick={() => selectSuggestion(suggestion)}
+                  // El tap se resuelve en pointerup (ver activateSuggestion): en móvil el `click`
+                  // llegaba después de que el teclado virtual cerrara el dropdown y se perdía, así que
+                  // la coordenada no se guardaba y no se podía cotizar.
+                  onPointerDown={handleSuggestionPointerDown}
+                  onPointerUp={(event) => handleSuggestionPointerUp(suggestion, event)}
+                  onClick={(event) => activateSuggestion(suggestion, event.timeStamp)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                   className={cn(
                     // min-h-11 = 44px: alto mínimo recomendado para acertar con el dedo.
@@ -373,6 +474,7 @@ export default function QuoteForm({
   onRequestChange,
   onViewPrice,
   defaultVehicleType,
+  profileVehicle = null,
 }: QuoteFormProps) {
   const [formData, setFormData] = useState<QuoteRequest>({
     origin: "",
@@ -386,6 +488,21 @@ export default function QuoteForm({
   // Fase 6.1: con un vehículo del catálogo elegido, el tipo viene del MODELO (dato derivado), así
   // que el select de tipo se deshabilita en lugar de dejar que lo contradiga. Ver el propio select.
   const hasCatalogVehicle = formData.vehicle !== null;
+
+  /**
+   * Bloque "Especificar modelo del vehículo" (Fase 8.1) desplegado. Arranca CERRADO: el formulario ya
+   * cotiza con el `vehicleType` de arriba, así que marca/modelo/año son opcionales y no deben empujar
+   * el botón principal fuera de la pantalla de un móvil. El chip del perfil puede abrirlo.
+   */
+  const [isVehicleDetailsOpen, setIsVehicleDetailsOpen] = useState(false);
+
+  /**
+   * Resumen del vehículo del catálogo para el título colapsado ("Toyota Corolla 2015"). Sale de
+   * `describeVehicle` —la misma descripción que usa PriceCard—, así que no puede divergir de lo que se
+   * tarifa. `null` = todavía no hay vehículo del catálogo elegido.
+   */
+  const catalogVehicleLabel =
+    formData.vehicle === null ? null : describeVehicle(formData.vehicle);
 
   /**
    * Fase 6.2: el tipo de vehículo puede venir del perfil del conductor (`defaultVehicleType`) como
@@ -418,6 +535,18 @@ export default function QuoteForm({
   const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
 
   /**
+   * Texto del campo "Pasajeros" (Fase 8.1). Es un BORRADOR DE TEXTO y no un número porque el usuario
+   * tiene que poder DEJAR EL CAMPO VACÍO mientras reescribe: con `type="number"` el móvil entregaba ""
+   * al borrar, el recorte inmediato a 1 devolvía "1" al campo y escribir "3" producía "13", que se
+   * clavaba al máximo del vehículo. Ese era el bug de "salta de 1 a 5 o 6".
+   *
+   * Reglas: solo dígitos (regex), se puede borrar entero, el motor (`formData.passengers`) nunca baja
+   * de 1 ni pasa de la capacidad, y el valor VISIBLE se clava al rango [1, capacidad] al salir del
+   * campo (`onBlur`), no en cada tecla.
+   */
+  const [passengerInput, setPassengerInput] = useState<string>(() => String(formData.passengers));
+
+  /**
    * Cambia el vehículo aplicando el límite de pasajeros (Fase 5.3).
    *
    * La capacidad es un límite DURO, no un aviso: con 6 pasajeros en una van, elegir una moto deja el
@@ -443,8 +572,59 @@ export default function QuoteForm({
       passengers: Math.min(Math.max(1, current.passengers), nextMax),
     }));
 
+    // Fase 8.1: el texto del campo sigue al valor recortado. Si no se sincronizara, el campo mostraría
+    // "9" mientras el motor cotiza 5 y el usuario no sabría qué se está cobrando.
+    setPassengerInput(String(Math.min(Math.max(1, formData.passengers), nextMax)));
+
     // Cambiar de vehículo sin recorte borra el aviso: deja de describir nada.
     setCapacityNotice(wasAdjusted ? formatCapacityNotice(nextType, nextMax) : null);
+  };
+
+  /**
+   * Escribe en el campo "Pasajeros" (Fase 8.1). Filtra a dígitos, permite vacío (para reescribir) y
+   * deja al motor con un valor válido en todo momento: el precio se sigue calculando mientras se
+   * escribe.
+   */
+  const handlePassengersChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.value;
+
+    // Escribir o pegar algo que no sean dígitos se ignora: el campo se queda como estaba.
+    if (!PASSENGERS_ALLOWED_PATTERN.test(raw)) return;
+
+    setPassengerInput(raw);
+
+    // Vacío o "0": el campo queda libre para escribir, pero el motor conserva el último valor válido
+    // (nunca cotiza con 0 pasajeros). El "1" visible llega al salir del campo (ver commitPassengers).
+    if (raw === "" || raw === "0") return;
+
+    const parsed = Number.parseInt(raw, 10);
+    setFormData((current) => ({
+      ...current,
+      // El motor nunca recibe más de la capacidad: la capacidad es un límite DURO (Fase 5.3), así que
+      // el precio no se rompe mientras el usuario escribe un número que no cabe.
+      passengers: Math.min(parsed, maxPassengers),
+    }));
+    // El aviso describe el hecho de que lo pedido no cabe; el recorte VISIBLE llega al salir del campo.
+    setCapacityNotice(
+      parsed > maxPassengers ? formatCapacityNotice(vehicleType, maxPassengers) : null
+    );
+  };
+
+  /**
+   * Cierra el campo "Pasajeros" (Fase 8.1): aquí —y no en cada tecla— se clava el valor al rango
+   * [1, capacidad del vehículo], que es lo que pide el guion de la fase. Un campo vacío (o "0") vale 1,
+   * el mínimo cotizable.
+   */
+  const commitPassengers = () => {
+    const parsed = Number.parseInt(passengerInput, 10);
+    const requested = Number.isNaN(parsed) ? 1 : parsed;
+    const clamped = Math.min(Math.max(1, requested), maxPassengers);
+
+    setPassengerInput(String(clamped));
+    setFormData((current) => ({ ...current, passengers: clamped }));
+    setCapacityNotice(
+      requested > maxPassengers ? formatCapacityNotice(vehicleType, maxPassengers) : null
+    );
   };
 
   // Fase 3.5g: ubicación del usuario. El hook NO la pide al montar (ver useUserLocation);
@@ -705,50 +885,45 @@ export default function QuoteForm({
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <div className="grid min-w-0 gap-2">
             <Label htmlFor="passengers">Pasajeros</Label>
-            {/* inputMode numérico: en móvil abre el teclado de dígitos en vez del
-                alfanumérico. min-h-11 = 44px táctil; en md vuelve al alto compacto. */}
+            {/* type="text" + inputMode/pattern (Fase 8.1): con `type="number"` el teclado móvil
+                entregaba "" al borrar (el recorte inmediato devolvía "1") y escribir "3" producía "13",
+                que se clavaba al máximo del vehículo. El teclado numérico se sigue abriendo por
+                `inputMode="numeric"` (+ `pattern` para iOS); el filtro de dígitos y el rango se
+                gestionan aquí, no en el navegador. min-h-11 = 44px táctil. */}
             <Input
               id="passengers"
-              type="number"
+              type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
               enterKeyHint="done"
-              min={1}
-              // `max` dinámico (Fase 5.3): el techo lo pone el vehículo elegido, no un 6 global.
-              max={maxPassengers}
-              value={formData.passengers}
-              // Se recorta al rango [1, capacidad del vehículo]. Antes se recortaba a 6 y se avisaba
-              // de que el precio no se calculaba; con el techo por vehículo ese estado ya no se
-              // alcanza desde la UI, así que el cambio es directo y el aviso de abajo lo explica.
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value, 10) || 1;
-                const clamped = Math.min(Math.max(1, parsed), maxPassengers);
-
-                setFormData((current) => ({ ...current, passengers: clamped }));
-                // El aviso solo aparece si de verdad hubo recorte (escribir 9 en un sedán deja 5); al
-                // escribir un valor válido, el aviso anterior deja de ser cierto y se borra.
-                setCapacityNotice(
-                  clamped < parsed ? formatCapacityNotice(vehicleType, maxPassengers) : null
-                );
-              }}
-              aria-describedby={capacityNotice !== null ? "passengers-notice" : undefined}
+              autoComplete="off"
+              value={passengerInput}
+              onChange={handlePassengersChange}
+              // El recorte al rango [1, capacidad] ocurre AL SALIR del campo, no en cada tecla.
+              onBlur={commitPassengers}
+              aria-describedby="passengers-info"
               className="min-h-11 md:min-h-0"
               required
             />
 
-            {/* Aviso discreto del ajuste (Fase 5.3): explica por qué el número cambió solo. En gris de
-                texto secundario y no en rojo a propósito: recortar es el comportamiento correcto del
-                campo, no un error del usuario. */}
-            {capacityNotice !== null && (
-              <p id="passengers-notice" className="text-xs text-muted-foreground" aria-live="polite">
-                {capacityNotice}
-              </p>
-            )}
+            {/* Línea informativa del campo (Fase 8.1). Un solo elemento con dos textos posibles: el
+                helper permanente ("Máx. 5 pasajeros para sedán") y, cuando hubo recorte, el aviso que
+                lo explica. Así el campo nunca salta de alto y `aria-describedby` apunta siempre a un id
+                que existe. En gris de texto secundario y no en rojo: recortar es el comportamiento
+                correcto del campo, no un error del usuario. */}
+            <p id="passengers-info" className="text-xs text-muted-foreground" aria-live="polite">
+              {capacityNotice ?? formatCapacityHelper(vehicleType, maxPassengers)}
+            </p>
           </div>
 
           <div className="grid min-w-0 gap-2">
             <Label htmlFor="vehicle">Vehículo</Label>
             <Select
               value={vehicleType}
+              // `items` (Fase 8.1): el `Select.Value` de Base UI solo pinta la ETIQUETA del item
+              // seleccionado si el Root recibe el mapa valor → etiqueta. Sin esta prop renderiza el
+              // valor CRUDO y el trigger mostraba "sedan" en minúsculas en lugar de "Sedán".
+              items={VEHICLE_LABELS}
               disabled={hasCatalogVehicle}
               onValueChange={(value) => {
                 // El Select puede emitir null (ej: al limpiarse), solo actualizamos con un valor válido
@@ -778,10 +953,11 @@ export default function QuoteForm({
                 sideOffset={4}
               >
                 {/* Nombres y orden salen de lib/pricing.ts: la etiqueta que el usuario ve y la
-                    tarifa que se aplica no pueden desincronizarse. */}
+                    tarifa que se aplica no pueden desincronizarse. El VALOR del item sigue siendo el
+                    tipo interno ("sedan"); `formatVehicleType` solo formatea lo que se muestra. */}
                 {VEHICLE_TYPES.map((vehicle) => (
                   <SelectItem key={vehicle} value={vehicle}>
-                    {VEHICLE_LABELS[vehicle]}
+                    {formatVehicleType(vehicle)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -800,9 +976,67 @@ export default function QuoteForm({
         </div>
       </div>
 
-      {/* Catálogo de vehículos (Fase 6.1): opcional. El tipo de vehículo de arriba se deduce del
-          modelo elegido, y "Otra marca / no está en la lista" devuelve el control al select manual. */}
-      <VehicleCatalogPicker value={formData.vehicle} onChange={handleVehicleChange} />
+      {/* Chip del vehículo del perfil (Fase 8.1): si el conductor ya lo guardó, se muestra aquí el
+          vehículo con el que cotiza sin obligarlo a abrir el catálogo. "Cambiar" despliega el bloque
+          de abajo. Es SOLO informativo: el tipo ya llega por `defaultVehicleType` y las tarifas por el
+          perfil, así que el precio no depende de este chip. */}
+      {profileVehicle !== null && formData.vehicle === null && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 py-1.5 pr-1.5 pl-3">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
+            Vehículo:{" "}
+            <span className="font-medium text-foreground">
+              {profileVehicle.brand} {profileVehicle.model} {profileVehicle.year}
+            </span>{" "}
+            · del perfil
+          </p>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            // 44px de alto (min-h-11) para el dedo, igual que el resto de controles del formulario.
+            className="min-h-11 shrink-0"
+            onClick={() => setIsVehicleDetailsOpen(true)}
+          >
+            Cambiar
+          </Button>
+        </div>
+      )}
+
+      {/* Catálogo de vehículos (Fase 6.1), ahora COLAPSABLE y opcional (Fase 8.1). Es el bloque menos
+          usado del formulario —ajusta la ficha del vehículo, no el precio de hoy— y ocupaba tres
+          selects antes del botón principal en un móvil. El tipo de vehículo de arriba ya permite
+          cotizar; "Otra marca / no está en la lista" sigue devolviendo el control a ese select.
+
+          ¿Por qué `<details>` nativo y no el Collapsible de Base UI? Porque este proyecto no tiene ese
+          componente instalado en components/ui y la regla de la fase es no añadir paquetes: `<details>`
+          ya trae el comportamiento (abierto/cerrado, teclado, lector de pantalla) sin JS ni
+          dependencias, igual que el desglose de PriceCard. El estado `open` es controlado para que el
+          chip "Cambiar" pueda desplegarlo. */}
+      <details
+        className="rounded-lg border border-border bg-muted/20 open:bg-muted/40"
+        open={isVehicleDetailsOpen}
+        // El toggle nativo se refleja en el estado: abrir con el dedo o con el teclado y abrir con el
+        // chip acaban en el mismo sitio.
+        onToggle={(event) => setIsVehicleDetailsOpen(event.currentTarget.open)}
+      >
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 truncate">
+            {catalogVehicleLabel ?? "Especificar modelo del vehículo (opcional)"}
+          </span>
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              isVehicleDetailsOpen && "rotate-180"
+            )}
+            aria-hidden="true"
+          />
+        </summary>
+
+        <div className="border-t border-border p-3">
+          <VehicleCatalogPicker value={formData.vehicle} onChange={handleVehicleChange} />
+        </div>
+      </details>
 
       {/* Siempre habilitado: no hay nada que "enviar" (el precio es en vivo) y el botón solo lleva a
           la tarjeta del precio, que explica lo que falte. Antes se deshabilitaba y el usuario se

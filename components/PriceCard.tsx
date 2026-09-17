@@ -24,7 +24,7 @@
 
 import type { Ref } from "react";
 import { ChevronDown, Clock, Loader2, Ruler, TriangleAlert, Users, Wallet } from "lucide-react";
-import { VEHICLE_LABELS, type PriceEstimate } from "@/lib/pricing";
+import { formatVehicleType, type PriceEstimate } from "@/lib/pricing";
 import { describeVehicle } from "@/lib/vehicleCatalog";
 import type { RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
@@ -94,7 +94,9 @@ function formatFactor(factor: number): string {
  * categoría sola, que es como se mostraba antes de esta fase.
  */
 function getVehicleLabel(request: QuoteRequest): string {
-  const category = VEHICLE_LABELS[request.vehicleType];
+  // Fase 8.1: la etiqueta sale de `formatVehicleType` ("sedan" → "Sedán"). El valor que tarifa el
+  // precio sigue siendo el de siempre; esto es solo lo que se pinta.
+  const category = formatVehicleType(request.vehicleType);
   const { vehicle } = request;
   if (vehicle === null) return category;
 

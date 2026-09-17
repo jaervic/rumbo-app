@@ -164,6 +164,22 @@ export const VEHICLE_LABELS: Record<VehicleType, string> = {
 };
 
 /**
+ * Etiqueta de un tipo de vehículo para MOSTRAR: `"sedan"` → `"Sedán"` (Fase 8.1).
+ *
+ * El valor interno NO se toca nunca: `"sedan"` (minúsculas y sin tilde) sigue siendo la clave de
+ * `VEHICLE_TARIFFS`, de `PASSENGER_CAPACITY` y del `<Select>`; formatear es SOLO presentación y por eso
+ * vive en una función aparte en vez de cambiar la tabla. Delega en `VEHICLE_LABELS` para que exista una
+ * única lista de nombres (si mañana `suv` pasa a llamarse "Camioneta", se cambia en un solo sitio).
+ *
+ * ⚠️ Es la etiqueta SUELTA ("Sedán · 3 pasajeros"). Dentro de una frase van los nombres en minúscula
+ * que necesita la concordancia del español ("Máximo 1 pasajero para moto"): eso es UI y vive en
+ * `VEHICLE_SENTENCE_NAMES` (components/QuoteForm.tsx).
+ */
+export function formatVehicleType(vehicleType: VehicleType): string {
+  return VEHICLE_LABELS[vehicleType];
+}
+
+/**
  * Capacidad de pasajeros de un vehículo (sin contar al conductor).
  *
  * Es la MISMA tabla que usa el campo "Pasajeros" del formulario (`PASSENGER_CAPACITY`), así que el

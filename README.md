@@ -203,6 +203,37 @@ DriverProfileButton ──▶ DriverProfilePanel ──▶ VehicleSelector + Tar
 - El panel monta el formulario con una `key` que cambia al abrir: cada apertura parte del perfil
   guardado y descarta lo escrito sin guardar.
 
+### Correcciones móviles y UX (Fase 8.1)
+
+Detectado al probar la URL de producción en un celular real:
+
+1. **Campo "Pasajeros"** (bug de "salta de 1 a 5 o 6"): con `type="number"` el teclado móvil entregaba
+   `""` al borrar, el recorte inmediato a 1 devolvía "1" al campo y escribir "3" producía "13", que se
+   clavaba al máximo del vehículo. Ahora el campo es `type="text"` + `inputMode="numeric"` +
+   `pattern="[0-9]*"`, guarda un BORRADOR de texto (`passengerInput`), solo acepta dígitos, se puede
+   borrar entero, mantiene al motor con un valor válido (nunca < 1 ni > capacidad) y clava el valor
+   visible al rango [1, capacidad] **al salir del campo** (`onBlur`), no en cada tecla. Debajo hay una
+   línea informativa que muestra "Máx. 5 pasajeros para sedán" y, si hubo recorte, el aviso que lo
+   explica (mismo dato, otro motivo: el aviso habla del hecho).
+2. **Sugerencias del autocompletado en móvil**: al tocar una sugerencia, el navegador cerraba antes el
+   teclado virtual y ese primer tap se consumía en el reflujo, así que el `click` no llegaba y la
+   coordenada no se guardaba (origen y destino quedaban como texto y el viaje no se podía cotizar). La
+   selección se resuelve ahora en `pointerup` —unifica táctil y ratón en un solo camino y se dispara
+   antes del cierre del teclado— con `click` como respaldo y ventana de deduplicación de 600 ms; un
+   desplazamiento mayor a 10 px se interpreta como scroll de la lista y no selecciona.
+3. **Catálogo de vehículos colapsable**: marca, modelo y año viven en un `<details>` nativo (no hay
+   Collapsible instalado en `components/ui` y la fase prohíbe añadir paquetes) con el título
+   "Especificar modelo del vehículo (opcional)", **cerrado por defecto**. Si el perfil del conductor ya
+   tiene vehículo, aparece un chip "Vehículo: Toyota Corolla 2015 · del perfil" con un botón "Cambiar"
+   que lo despliega. Colapsado no cambia nada del cálculo: el precio sigue saliendo del `vehicleType`
+   del select de arriba.
+4. **Etiquetas del tipo de vehículo**: `formatVehicleType(type)` (`lib/pricing.ts`) centraliza
+   "sedan" → "Sedán" y se usa en el select del formulario, en el panel del conductor y en PriceCard. El
+   valor interno sigue siendo `"sedan"` (minúsculas, sin tilde).
+   ⚠️ **Trampa de Base UI**: `Select.Value` pinta la ETIQUETA del item seleccionado solo si el
+   `Select.Root` recibe la prop `items` (mapa valor → etiqueta); sin ella renderiza el **valor crudo**, y
+   los triggers mostraban "sedan" y, en el catálogo, "toyota" / "toyota-corolla".
+
 ### Pendiente
 
 - Convertir el precio a bolívares con la tasa BCV del día (Fase 7).

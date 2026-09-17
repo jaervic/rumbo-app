@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { VEHICLE_LABELS } from "@/lib/pricing";
+import { formatVehicleType } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import {
   describeVehicle,
@@ -48,6 +48,17 @@ import type { VehicleSelection } from "@/types";
  * del catálogo necesita un valor propio que no pueda colisionar con un id (los ids son slugs).
  */
 const OTHER_BRAND_VALUE = "__other__";
+
+/**
+ * `items` del Select de marca (Fase 8.1): Base UI solo pinta la ETIQUETA del item seleccionado si el
+ * Root recibe el mapa valor → etiqueta; sin él, el trigger renderiza el valor CRUDO y el campo mostraba
+ * el id del catálogo ("toyota"). Se construye una sola vez, a nivel de módulo, para que la identidad no
+ * cambie en cada render.
+ */
+const BRAND_ITEMS: Record<string, string> = {
+  ...Object.fromEntries(VEHICLE_BRANDS.map((brand) => [brand.id, brand.name])),
+  [OTHER_BRAND_VALUE]: "Otra marca / no está en la lista",
+};
 
 export interface VehicleCatalogPickerProps {
   /** Selección completa actual (null = sin elegir, o el vehículo no está en el catálogo). */
@@ -75,6 +86,11 @@ export default function VehicleCatalogPicker({
   // Fuentes de cada paso de la cascada: sin marca no hay modelos, sin modelo no hay años.
   const models = brandId === null ? [] : getVehicleModelsByBrand(brandId);
   const years = modelId === null ? [] : getVehicleModelYears(modelId);
+  // Etiquetas del Select de modelo (mismo motivo que BRAND_ITEMS): el trigger debe decir "Corolla",
+  // no el id "toyota-corolla".
+  const modelItems: Record<string, string> = Object.fromEntries(
+    models.map((model) => [model.id, model.name])
+  );
   // Solo se describe lo que el padre aceptó como selección completa (ver `onChange`).
   const description = value === null ? null : describeVehicle(value);
   const vehicleType = value === null ? null : getVehicleTypeFromSelection(value);
@@ -132,7 +148,7 @@ export default function VehicleCatalogPicker({
       {/* La marca ocupa la fila completa: es el primer paso de la cascada y desde ahí manda el resto. */}
       <div className="grid min-w-0 gap-2 sm:col-span-2">
         <Label htmlFor="vehicle-brand">Marca</Label>
-        <Select value={brandId} onValueChange={handleBrandChange}>
+        <Select value={brandId} items={BRAND_ITEMS} onValueChange={handleBrandChange}>
           <SelectTrigger
             id="vehicle-brand"
             className="w-full min-h-11 text-base md:min-h-0 md:text-sm"
@@ -154,7 +170,12 @@ export default function VehicleCatalogPicker({
 
       <div className="grid min-w-0 gap-2">
         <Label htmlFor="vehicle-model">Modelo</Label>
-        <Select value={modelId} onValueChange={handleModelChange} disabled={brandId === null}>
+        <Select
+          value={modelId}
+          items={modelItems}
+          onValueChange={handleModelChange}
+          disabled={brandId === null}
+        >
           <SelectTrigger
             id="vehicle-model"
             className="w-full min-h-11 text-base md:min-h-0 md:text-sm"
@@ -201,7 +222,7 @@ export default function VehicleCatalogPicker({
           aparecer, y aria-live lo anuncia al cambiar. */}
       <p className="min-h-4 text-xs text-muted-foreground sm:col-span-2" aria-live="polite">
         {description !== null && vehicleType !== null
-          ? `${description} · ${VEHICLE_LABELS[vehicleType]}`
+          ? `${description} · ${formatVehicleType(vehicleType)}`
           : "Opcional: con marca y modelo se ajusta solo el tipo de vehículo."}
       </p>
     </div>
