@@ -128,9 +128,44 @@ QuoteRequest { ..., vehicleType, vehicle: { brandId, modelId, year } | null }
 - La lista de años se corta en `MAX_VEHICLE_YEAR`, una constante escrita a mano (no la fecha del
   sistema) para que el HTML del servidor y el del cliente coincidan: la hidratación manda.
 
+### Catálogo unificado y selector filtrado (Fase 6.1a)
+
+Un solo catálogo (`lib/vehicleCatalog.ts`): cada marca declara `vehicleTypes`, **deducidos de sus
+modelos** (`[...new Set(models.map(m => m.type))]`), así que "Toyota" no aparece en la lista de motos
+porque no tiene motos, no porque alguien la apuntara en dos sitios. El comodín `Otro` (`OTHER_OPTION`)
+declara los cuatro tipos, no tiene modelos y va al final de la tabla (última opción de todas las listas).
+
+```text
+getBrandsByVehicleType("moto")  -> Honda · Suzuki · Yamaha · Bera · Empire · Bajaj · MD · UM ·
+                                   Keeway · Skygo · AKT · Otro
+getModelsByBrand("toyota")      -> Corolla, Camry, Yaris, RAV4, Fortuner, 4Runner,
+                                   Land Cruiser Prado, Land Cruiser, Hilux, Hiace
+getYears()                      -> 2027, 2026, ..., 1980      (CURRENT_YEAR + 1 → 1980)
+isKnownBrand · isKnownModel · isBrandAvailableForType
+```
+
+- `types/vehicle.ts` define `Vehicle { brand, model, year, vehicleType }`: marca y modelo son TEXTO
+  (admiten "Otro") y el tipo viaja dentro del vehículo para no depender del formulario.
+- `components/VehicleSelector.tsx` (Fase 6.1a) es el selector con filtro marca → modelo → año. El
+  borrador se guarda con el tipo con el que se creó, así que **cambiar de sedán a moto resetea marca y
+  modelo sin `useEffect`** (reset derivado en el render) y con "Otro" aparece un campo de texto libre.
+- Catálogo ampliado con el parque antiguo (80/90/2000): Starlet, Tercel, Chevette, Caprice, Corsa,
+  Escort, Galant, Sunny, Almera, Clio, 323… y camionetas como Blazer, Bronco, F-100, Patrol, Nativa,
+  Samurai, más las series FJ del Land Cruiser y el **Autana** (el 4Runner venezolano). Marcas que se
+  suman: **Peugeot, Daewoo, Dodge** (autos) y **Voge, Vento** (motos, todavía sin modelos cargados).
+  De la Fase 6.1: Keeway, Skygo, AKT, motos extra y autos extra; **"Haojue" → "MD"**, y `getYears()`
+  arranca en **1980** porque en Venezuela se cotizan carros de esa época.
+- `VehicleSelector` **no está montado en ningún sitio todavía**: es el selector del PERFIL DEL
+  CONDUCTOR (Fase 6.2). El QuoteForm sigue con `VehicleCatalogPicker` (Fase 6.1), que no filtra.
+- ⚠️ `CURRENT_YEAR = new Date().getFullYear()` se evalúa al importar el módulo y la página se
+  prerenderiza: la lista de años queda congelada en la fecha del build (solo puede dar aviso de
+  hidratación en el salto de año).
+
 ### Pendiente
 
 - Convertir el precio a bolívares con la tasa BCV del día (Fase 7).
+- Fase 6.2: `VehicleSelector` en el perfil del conductor y persistencia del `Vehicle` en localStorage.
+  Fase 7: marcas/modelos personalizados a Supabase con `is_custom_brand` / `is_custom_model`.
 - Factor por antigüedad del vehículo (Fase 6.2) y revisión del catálogo: años por generación y las
   marcas de moto que faltan (Vento, Ryan, Motomel...).
 - Calibrar `VEHICLE_TARIFFS` y `TRAFFIC_BANDS` con viajes reales cuando exista Supabase.
