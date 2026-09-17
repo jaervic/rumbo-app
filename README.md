@@ -1,28 +1,37 @@
 # App de Transporte - Estimador de Precios
 
-Web-app para estimar precios de transporte para conductores independientes, permitiendo a los usuarios obtener cálculos rápidos basados en origen, destino y tipo de vehículo.
+Web-app para estimar precios de transporte (moto, sedán, SUV y van) para conductores independientes en
+Venezuela: se elige origen y destino en el mapa (o se escribe la dirección), el vehículo y los
+pasajeros, y la app calcula un rango de precio **en vivo** a partir de la distancia y el tiempo de ruta
+de OSRM. Sin backend: todo se calcula en el navegador y el perfil del conductor se guarda en
+`localStorage`.
 
 ## Stack Tecnológico
 
 - **Framework:** [Next.js 16](https://nextjs.org/) (App Router)
 - **Lenguaje:** [TypeScript](https://www.typescriptlang.org/) (Estricto)
 - **Estilos:** [Tailwind CSS v4](https://tailwindcss.com/)
-- **Componentes:** [shadcn/ui](https://ui.shadcn.com/)
+- **Componentes:** [shadcn/ui](https://ui.shadcn.com/) sobre [Base UI](https://base-ui.com/)
 - **Mapas:** [Leaflet](https://leafletjs.com/) + [OpenStreetMap](https://www.openstreetmap.org/)
 - **Rutas y distancia:** [OSRM](http://project-osrm.org/) (servidor público, sin API key)
 - **Autocompletado de direcciones:** [Photon](https://photon.komoot.io/) (OpenStreetMap, gratis)
 - **Base de Datos:** [Supabase](https://supabase.com/) (Próximamente)
+- **Deploy:** [Vercel](https://vercel.com/) (sitio estático, sin backend ni funciones serverless)
 
 ## Estructura de Carpetas
 
 ```text
 app/            # Rutas y componentes de página (Next.js App Router)
 components/     # Componentes reutilizables
-  ui/           # Componentes de base (shadcn/ui)
-lib/            # Utilidades y lógica de negocio (pricing, fetching, etc.)
+  ui/           # Componentes de base (shadcn/ui sobre Base UI)
+hooks/          # Hooks de cliente (useRoute, useDriverProfile, useUserLocation)
+lib/            # Utilidades y lógica de negocio (pricing, geocoding, routing...)
 types/          # Definiciones de tipos TypeScript
 public/         # Assets estáticos
 ```
+
+En la raíz: `package.json` (scripts), `.env.local.example` (plantilla de variables),
+`next.config.ts`, `eslint.config.mjs`, `tsconfig.json`.
 
 ## Motor de precios (Fase 5)
 
@@ -208,26 +217,86 @@ DriverProfileButton ──▶ DriverProfilePanel ──▶ VehicleSelector + Tar
   actualiza al siguiente cambio de ruta/vehículo/pasajeros: falta un reloj que lo refresque solo.
 - Instalar Vitest y convertir en suite permanente las comprobaciones del motor (Fase 9).
 
-## Comandos
+## Cómo correr en local
 
-### Instalación
+Requisitos: **Node.js 20.9 o superior** y npm.
+
 ```bash
-npm install
+npm install     # instala las dependencias
+npm run dev     # servidor de desarrollo en http://localhost:3000
 ```
 
-### Desarrollo
-```bash
-npm run dev
-```
+No hace falta configurar nada más para desarrollar: el autocompletado (Photon) y las rutas (OSRM) usan
+APIs públicas sin clave, así que la app arranca sin `.env.local`.
 
-### Producción
+## Scripts
+
+| Script | Qué hace |
+| --- | --- |
+| `npm run dev` | Servidor de desarrollo (Turbopack) en `http://localhost:3000` |
+| `npm run build` | Build de producción en `.next/`, con chequeo de tipos de TypeScript |
+| `npm run start` | Sirve la build de producción (requiere `npm run build` antes) |
+| `npm run lint` | ESLint 9 (flat config de `eslint-config-next`) |
+
+> En Next.js 16 `next build` **ya no ejecuta ESLint**: los avisos del linter solo se ven con
+> `npm run lint`, y el build de Vercel tampoco los mira. Si quieres que sean bloqueantes, cambia el
+> *Build Command* de Vercel a `npm run lint && npm run build`.
+
+## Build y start en producción
+
 ```bash
 npm run build
-npm run start
+npm run start     # sirve la build en http://localhost:3000
 ```
 
-## Configuración
+La ruta `/` se prerenderiza como estática: no hay rutas de API ni funciones serverless.
+
+## Datos del conductor (localStorage)
+
+**Hoy no hay backend.** El perfil del conductor (nombre, vehículo y tarifas propias) se guarda en el
+`localStorage` del navegador con la clave `cotizador.driverProfile.v1` (ver `lib/driverProfile.ts`):
+
+- Los datos viven solo en ese navegador y ese dispositivo: no se sincronizan ni se comparten.
+- Se pierden si el usuario borra los datos del sitio o navega en modo incógnito.
+- No viajan al servidor: el deploy no necesita base de datos ni variables de entorno.
+- La migración a Supabase (con login) y la sincronización del perfil quedan para una fase posterior.
+
+## Variables de entorno
 
 1. Copia `.env.local.example` a `.env.local`.
 2. Completa las variables de entorno necesarias.
+
+Hoy **ninguna es obligatoria**: Photon (`https://photon.komoot.io`) y OSRM
+(`https://router.project-osrm.org`) son APIs públicas y no piden clave. En el ejemplo solo están
+comentadas las de Supabase, que se activarán con el login. En Vercel los valores se cargan en
+*Settings → Environment Variables* y solo las `NEXT_PUBLIC_*` llegan al navegador.
+
+## Deploy en Vercel
+
+Pasos manuales (una sola vez):
+
+1. **Cuenta**: entra en [vercel.com](https://vercel.com) → *Sign Up* → **Continue with GitHub**.
+2. **Importar**: *Add New… → Project* → **Import Git Repository** → elige `app-transporte` (si no
+   aparece, pulsa *Adjust GitHub App Permissions* y da acceso al repositorio).
+3. **Deploy**: Vercel detecta Next.js solo (*Framework Preset: Next.js*, *Build Command*:
+   `npm run build`, *Install Command*: `npm install`, *Output Directory*: `.next`). No hay variables
+   de entorno que cargar. Pulsa **Deploy**.
+4. **URL pública**: al terminar (~1 min) Vercel asigna algo como
+   `https://app-transporte-<hash>.vercel.app`; cópiala del panel del proyecto o de *Settings → Domains*.
+
+A partir de ahí el **deploy es automático**:
+
+- Cada `git push` a `main` publica una nueva versión de producción.
+- Cada Pull Request genera una *Preview URL* propia.
+- La carpeta `.vercel/` (del CLI local) está en `.gitignore`: no se versiona.
+
+### Advertencias para el deploy
+
+- `CURRENT_YEAR = new Date().getFullYear()` (`lib/vehicleCatalog.ts`) se evalúa al construir: la lista
+  de años queda congelada en la fecha del build y solo cambia con un nuevo deploy.
+- El mapa es Leaflet cargado en el cliente con `next/dynamic` (`ssr: false`), así que no se renderiza en
+  el servidor: no hay riesgo de avisos de hidratación por el mapa.
+- El linter no bloquea el build (Next 16 no lo ejecuta): córrelo a mano antes del push.
+- Las tarifas de `VEHICLE_TARIFFS` y las franjas de `TRAFFIC_BANDS` siguen siendo heurísticas sin datos
+  reales de viajes; publicar en Vercel no las valida.
 
