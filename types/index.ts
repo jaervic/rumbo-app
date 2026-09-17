@@ -1,6 +1,32 @@
 export type VehicleType = "moto" | "sedan" | "suv" | "van";
 
 /**
+ * Pasajeros máximos por vehículo (SIN contar al conductor): es la ÚNICA tabla con estos números.
+ *
+ * La capacidad tiene dos consumidores y los dos leen aquí: el `max` del campo "Pasajeros" del
+ * formulario (components/QuoteForm.tsx) y `VEHICLE_TARIFFS.maxPassengers` de lib/pricing.ts, que es
+ * lo que valida el motor (`isVehicleSuitable`). Una divergencia no daría un error de tipos: daría un
+ * formulario que deja pedir 2 pasajeros en una moto y un motor que devuelve `null` sin explicar por
+ * qué. Por eso estos números viven en un solo sitio.
+ *
+ * Criterio de cada valor:
+ * - `moto`: 1. Un solo pasajero detrás del conductor (conductor + 1 = 2 personas sobre la moto).
+ * - `sedan`: 5. Tres plazas atrás y dos delante con el conductor: la capacidad de un turismo.
+ * - `suv`: 6. Muchas son de 5, pero hay 7 plazas (Prado, Fortuner, Tahoe); 6 cubre esos casos sin
+ *   prometer la tercera fila completa.
+ * - `van`: 6. Hiace, Sprinter o Carnival con asientos corridos.
+ *
+ * ⚠️ Es un dato de NEGOCIO (hasta dónde se puede cotizar), no una preferencia de la UI: por eso vive
+ * aquí, junto a `VehicleType`, y no dentro del componente.
+ */
+export const PASSENGER_CAPACITY: Record<VehicleType, number> = {
+  moto: 1,
+  sedan: 5,
+  suv: 6,
+  van: 6,
+};
+
+/**
  * Vehículo concreto elegido del catálogo de la Fase 6.1 (marca + modelo + año).
  *
  * Los ids son los del catálogo local (`lib/vehicleCatalog.ts`), no nombres legibles: el texto se

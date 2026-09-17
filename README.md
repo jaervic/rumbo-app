@@ -30,7 +30,7 @@ Todo el cálculo vive en `lib/pricing.ts` y tiene dos capas:
 
 - **`estimatePrice(input)`** — cálculo puro y sin red: recibe distancia (km), duración ideal (min),
   vehículo y pasajeros, y devuelve un `PriceEstimate` con el desglose completo, o `null` si la
-  combinación no permite un precio honesto (p. ej. 3 pasajeros en una moto).
+  combinación no permite un precio honesto (p. ej. 2 pasajeros en una moto).
 - **`calculatePrice(request, options)`** — capa orquestada: usa la ruta ya calculada (la de
   `useRoute`) o la pide a OSRM con las coordenadas, y luego aplica `estimatePrice`.
 
@@ -48,7 +48,7 @@ rango        = medio × (1 ± 12 %)        priceMin nunca baja del viaje mínimo
 
 | Constante | Valor | Por qué |
 | --- | --- | --- |
-| `VEHICLE_TARIFFS` | bandera + tarifa/km + tarifa/min + recargo por pasajero + viaje mínimo + capacidad, **por tipo de vehículo** | Cada vehículo tiene su estructura de coste; una tabla se ajusta sin tocar la fórmula |
+| `VEHICLE_TARIFFS` | bandera + tarifa/km + tarifa/min + recargo por pasajero + viaje mínimo + capacidad (leída de `PASSENGER_CAPACITY`), **por tipo de vehículo** | Cada vehículo tiene su estructura de coste; una tabla se ajusta sin tocar la fórmula |
 | `TRAFFIC_BANDS` (vía `getTrafficFactor`) | pico AM/PM 1,35 · mediodía 1,20 · madrugada 0,85 | OSRM da la duración *ideal* (sin tráfico); esta heurística la corrige por franja horaria |
 | `NIGHT_SURCHARGE_FACTOR` | 1,15 (22:00–06:00) | Menos oferta y más riesgo de noche; cambia el PRECIO, no los minutos |
 | `WEATHER_FACTOR` | 1 | Sin API de clima todavía; el gancho queda explícito |
@@ -66,15 +66,17 @@ independientes en Venezuela. Pendiente (Fase 7+): conversión a bolívares con l
 
 | Vehículo | Pasajeros máx. | Viaje mínimo |
 | --- | --- | --- |
-| Moto | 2 | $1,50 |
+| Moto | 1 | $1,50 |
 | Sedán | 5 | $2,50 |
 | SUV | 6 | $3,50 |
 | Van | 6 | $4,50 |
 
-La capacidad vive en `VEHICLE_TARIFFS` (`lib/pricing.ts`) y el formulario la lee con
-`getVehicleCapacity`. Si el usuario pide más pasajeros de los que caben, `QuoteForm` muestra el aviso
-junto al campo ("Esta moto no puede llevar 6 pasajeros (máximo 2).") y **no se calcula precio**: la
-tarjeta explica "Esta combinación no es posible".
+La capacidad se declara en `PASSENGER_CAPACITY` (`types/index.ts`) y `VEHICLE_TARIFFS` lee de ahí su
+campo `maxPassengers`, así que el límite del campo "Pasajeros" y el que valida el motor son el mismo
+número. El campo no deja pasar de la capacidad del vehículo: con 6 pasajeros en una van, cambiar a moto
+deja 1 y un aviso discreto lo explica ("Máximo 1 pasajero para moto"). `estimatePrice` sigue devolviendo
+`null` para una combinación imposible (la tarjeta dice "Esta combinación no es posible"), porque el motor
+también se llama fuera de la UI (Fase 7: cotización guardada).
 
 ### Precio en vivo (Fase 6)
 

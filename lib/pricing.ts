@@ -56,6 +56,7 @@
  * desglose que suma exacto y los casos que deben devolver `null`). Hoy el proyecto no tiene runner.
  */
 
+import { PASSENGER_CAPACITY } from "@/types";
 import type { Coords, QuoteRequest, QuoteResult, VehicleType } from "@/types";
 import { getRoute, type RouteResult } from "./routing";
 
@@ -81,7 +82,11 @@ export interface VehicleTariff {
   perExtraPassenger: number;
   /** Piso del viaje: si el cálculo da menos, se cobra este mínimo. */
   minimumFare: number;
-  /** Pasajeros que caben (sin contar al conductor): cotizar más es una combinación imposible. */
+  /**
+   * Pasajeros que caben (sin contar al conductor): cotizar más es una combinación imposible.
+   * Se lee de `PASSENGER_CAPACITY` (types/index.ts) para que el límite que permite el formulario y
+   * el que valida el motor sean el MISMO número.
+   */
   maxPassengers: number;
 }
 
@@ -94,17 +99,17 @@ export interface VehicleTariff {
  * (van con 6 pax ≈ 13,89 USD).
  */
 export const VEHICLE_TARIFFS: Record<VehicleType, VehicleTariff> = {
-  // Moto: lo más barato de operar y de mantener. Caben 2 pasajeros y el segundo NO lleva recargo:
-  // la tarifa de moto es la más ajustada del parque y hoy se prefiere un precio simple de explicar.
-  // Decisión de producto revisable con datos reales (poner un `perExtraPassenger` > 0 es un cambio
-  // de una sola línea).
+  // Moto: lo más barato de operar y de mantener, y con UNA sola plaza de pasajero (Fase 5.3: moto
+  // = 1). El recargo por pasajero adicional queda inerte (nunca hay un segundo pasajero) y se deja
+  // en 0 a propósito: es un número que hoy no se podría cobrar. Si la moto admitiera acompañante,
+  // el cambio serían dos líneas: `PASSENGER_CAPACITY.moto` y este `perExtraPassenger`.
   moto: {
     baseFare: 1,
     perKm: 0.35,
     perMin: 0.05,
     perExtraPassenger: 0,
     minimumFare: 1.5,
-    maxPassengers: 2,
+    maxPassengers: PASSENGER_CAPACITY.moto,
   },
   // Sedán: la referencia del mercado (4 puertas, hasta 5 pasajeros).
   sedan: {
@@ -113,7 +118,7 @@ export const VEHICLE_TARIFFS: Record<VehicleType, VehicleTariff> = {
     perMin: 0.08,
     perExtraPassenger: 0.35,
     minimumFare: 2.5,
-    maxPassengers: 5,
+    maxPassengers: PASSENGER_CAPACITY.sedan,
   },
   // SUV: más confort y maletero, consumo mayor.
   suv: {
@@ -122,7 +127,7 @@ export const VEHICLE_TARIFFS: Record<VehicleType, VehicleTariff> = {
     perMin: 0.11,
     perExtraPassenger: 0.45,
     minimumFare: 3.5,
-    maxPassengers: 6,
+    maxPassengers: PASSENGER_CAPACITY.suv,
   },
   // Van: hasta 6 pasajeros o equipaje voluminoso (aeropuerto, grupos, encomiendas).
   van: {
@@ -131,7 +136,7 @@ export const VEHICLE_TARIFFS: Record<VehicleType, VehicleTariff> = {
     perMin: 0.14,
     perExtraPassenger: 0.6,
     minimumFare: 4.5,
-    maxPassengers: 6,
+    maxPassengers: PASSENGER_CAPACITY.van,
   },
 };
 
@@ -150,14 +155,19 @@ export const VEHICLE_LABELS: Record<VehicleType, string> = {
   van: "Van",
 };
 
-/** Capacidad de pasajeros de un vehículo (sin contar al conductor). */
+/**
+ * Capacidad de pasajeros de un vehículo (sin contar al conductor).
+ *
+ * Es la MISMA tabla que usa el campo "Pasajeros" del formulario (`PASSENGER_CAPACITY`), así que el
+ * límite de la UI y el que acepta el motor no pueden divergir.
+ */
 export function getVehicleCapacity(vehicleType: VehicleType): number {
   return VEHICLE_TARIFFS[vehicleType].maxPassengers;
 }
 
 /**
  * ¿La combinación vehículo/pasajeros tiene sentido? El motor rechaza cotizarla si no
- * (p. ej. 3 pasajeros en una moto): es mejor no dar precio que dar uno imposible de cumplir.
+ * (p. ej. 2 pasajeros en una moto): es mejor no dar precio que dar uno imposible de cumplir.
  */
 export function isVehicleSuitable(vehicleType: VehicleType, passengers: number): boolean {
   return Number.isInteger(passengers) && passengers >= 1 && passengers <= getVehicleCapacity(vehicleType);

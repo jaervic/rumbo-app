@@ -21,32 +21,36 @@ import {
   MIN_QUERY_LENGTH,
   GeocodeResult,
 } from "@/lib/geocoding";
-import { getVehicleCapacity, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
+import { VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
 import { getVehicleTypeFromSelection } from "@/lib/vehicleCatalog";
-import { Coords, MapSelectionMode, QuoteCoords, QuoteRequest, VehicleSelection, VehicleType } from "@/types";
+import { Coords, MapSelectionMode, PASSENGER_CAPACITY, QuoteCoords, QuoteRequest, VehicleSelection, VehicleType } from "@/types";
 import { useUserLocation, type UserLocation } from "@/hooks/useUserLocation";
 
 /** Debounce de escritura antes de pedir sugerencias a Photon. */
 const GEOCODE_DEBOUNCE_MS = 500;
 
 /**
- * Máximo absoluto de pasajeros que acepta el campo: el del vehículo más capaz del parque. El
- * límite POR VEHÍCULO es otra cosa y vive en lib/pricing.ts (`getVehicleCapacity`, alimentado por
- * VEHICLE_TARIFFS); aquí solo se evita poder escribir un 99 sin sentido.
+ * Cómo se nombra el vehículo dentro de una frase ("Máximo 1 pasajero para moto"). Es texto de UI
+ * (concordancia de número y de género) y por eso NO vive en lib/pricing.ts; la capacidad —que es un
+ * número de negocio— se lee de `PASSENGER_CAPACITY` (types/index.ts).
  */
-const MAX_PASSENGERS = 6;
+const VEHICLE_SENTENCE_NAMES: Record<VehicleType, string> = {
+  moto: "moto",
+  sedan: "sedán",
+  suv: "SUV",
+  van: "van",
+};
 
 /**
- * Cómo se nombra el vehículo en un mensaje al usuario ("Esta moto no puede llevar 6 pasajeros").
- * Es texto de UI (concordancia de género) y por eso NO vive en lib/pricing.ts; la capacidad —que
- * es un número de negocio— sí se lee de ahí con `getVehicleCapacity`.
+ * Aviso del ajuste del campo "Pasajeros" (Fase 5.3): "Máximo 1 pasajero para moto" · "Máximo 5
+ * pasajeros para sedán". El singular importa: "1 pasajeros" es el tipo de detalle que hace dudar del
+ * resto de los números de la app.
  */
-const VEHICLE_SUBJECTS: Record<VehicleType, string> = {
-  moto: "Esta moto",
-  sedan: "Este sedán",
-  suv: "Este SUV",
-  van: "Esta van",
-};
+function formatCapacityNotice(vehicleType: VehicleType, maxPassengers: number): string {
+  return `Máximo ${maxPassengers} ${maxPassengers === 1 ? "pasajero" : "pasajeros"} para ${
+    VEHICLE_SENTENCE_NAMES[vehicleType]
+  }`;
+}
 
 /**
  * API imperativa del formulario.
@@ -376,11 +380,43 @@ export default function QuoteForm({
   // que el select de tipo se deshabilita en lugar de dejar que lo contradiga. Ver el propio select.
   const hasCatalogVehicle = formData.vehicle !== null;
 
-  // Capacidad del vehículo elegido (fuente única: la tabla de tarifas de lib/pricing.ts). Si el
-  // viaje la supera no se calcula precio y el mensaje de abajo explica por qué.
+  // Capacidad del vehículo elegido (Fase 5.3): es el `max` del campo "Pasajeros" y el MISMO número
+  // que valida el motor, porque los dos leen `PASSENGER_CAPACITY` (types/index.ts).
+  const maxPassengers = PASSENGER_CAPACITY[formData.vehicleType];
 
-  const maxPassengers = getVehicleCapacity(formData.vehicleType);
-  const hasTooManyPassengers = formData.passengers > maxPassengers;
+  /**
+   * Aviso del último ajuste del campo "Pasajeros". Es estado (y no un valor derivado) porque habla
+   * de un HECHO —"se recortó"— y no del número actual: vive hasta que el usuario toca el campo.
+   */
+  const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
+
+  /**
+   * Cambia el vehículo aplicando el límite de pasajeros (Fase 5.3).
+   *
+   * La capacidad es un límite DURO, no un aviso: con 6 pasajeros en una van, elegir una moto deja el
+   * campo en 1 y lo explica. Así el formulario no puede quedar en un estado que el motor rechace
+   * (`estimatePrice` devolvería `null` y la tarjeta diría "Esta combinación no es posible" sin decir
+   * qué tocar).
+   *
+   * Lo usan los DOS caminos que cambian el vehículo —el select de tipo y el catálogo, que deduce el
+   * tipo del modelo— para que el ajuste no se olvide en ninguno.
+   */
+  const applyVehicleType = (nextType: VehicleType) => {
+    const nextMax = PASSENGER_CAPACITY[nextType];
+    // El recorte se decide con el valor actual del campo: dentro del updater de `setFormData` no se
+    // puede avisar de nada sin volverlo impuro.
+    const wasAdjusted = formData.passengers > nextMax;
+
+    setFormData((current) => ({
+      ...current,
+      vehicleType: nextType,
+      // Nunca por debajo de 1 (el mínimo del campo) ni por encima de la capacidad del vehículo.
+      passengers: Math.min(Math.max(1, current.passengers), nextMax),
+    }));
+
+    // Cambiar de vehículo sin recorte borra el aviso: deja de describir nada.
+    setCapacityNotice(wasAdjusted ? formatCapacityNotice(nextType, nextMax) : null);
+  };
 
   // Fase 3.5g: ubicación del usuario. El hook NO la pide al montar (ver useUserLocation);
   // solo se pide al pulsar el botón del campo Origen. Si no hay, `location` es null y todo
@@ -433,18 +469,23 @@ export default function QuoteForm({
    * `null` = "Otra marca / no está en la lista": se limpia la selección y el tipo se queda como
    * esté, porque entonces vuelve a mandar el select manual de vehículo.
    *
-   * Todo va en un solo `setFormData`: un render, un aviso al padre y ningún precio intermedio.
+   * El TIPO lo deduce el modelo del catálogo; los pasajeros se ajustan con `applyVehicleType`, que es
+   * el mismo camino que usa el select de tipo: la regla de capacidad vive en un solo sitio.
    */
   const handleVehicleChange = (selection: VehicleSelection | null) => {
-    const derivedType = selection === null ? null : getVehicleTypeFromSelection(selection);
+    if (selection === null) {
+      // "Otra marca / no está en la lista": el vehículo sale del catálogo y el tipo se queda como
+      // está (vuelve a mandar el select manual). Los pasajeros no cambian.
+      setFormData((current) => ({ ...current, vehicle: null }));
+      return;
+    }
 
-    setFormData((current) => ({
-      ...current,
-      vehicle: selection,
-      // Si el modelo no estuviera en el catálogo (no debería ocurrir) se conserva el tipo actual:
-      // el precio nunca se queda sin un `vehicleType` válido.
-      vehicleType: derivedType ?? current.vehicleType,
-    }));
+    setFormData((current) => ({ ...current, vehicle: selection }));
+
+    // El tipo lo define el modelo (dato derivado) y se aplica con `applyVehicleType` para que el
+    // límite de pasajeros valga también por este camino. Si el modelo no estuviera en el catálogo (no
+    // debería ocurrir) se conserva el tipo actual: el precio nunca se queda sin un `vehicleType`.
+    applyVehicleType(getVehicleTypeFromSelection(selection) ?? formData.vehicleType);
   };
 
   const handleDestinationSelect = (coords: Coords) => {
@@ -643,33 +684,34 @@ export default function QuoteForm({
               inputMode="numeric"
               enterKeyHint="done"
               min={1}
-              max={MAX_PASSENGERS}
+              // `max` dinámico (Fase 5.3): el techo lo pone el vehículo elegido, no un 6 global.
+              max={maxPassengers}
               value={formData.passengers}
-              // Se recorta al rango [1, MAX_PASSENGERS] (el del vehículo más capaz). El techo POR
-              // VEHÍCULO no se recorta: se avisa, porque recortar en silencio dejaría al usuario sin
-              // entender por qué desapareció su pasajero.
-              onChange={(e) =>
-                setFormData((current) => ({
-                  ...current,
-                  passengers: Math.min(
-                    MAX_PASSENGERS,
-                    Math.max(1, Number.parseInt(e.target.value, 10) || 1)
-                  ),
-                }))
-              }
-              aria-invalid={hasTooManyPassengers}
-              aria-describedby={hasTooManyPassengers ? "passengers-error" : undefined}
+              // Se recorta al rango [1, capacidad del vehículo]. Antes se recortaba a 6 y se avisaba
+              // de que el precio no se calculaba; con el techo por vehículo ese estado ya no se
+              // alcanza desde la UI, así que el cambio es directo y el aviso de abajo lo explica.
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10) || 1;
+                const clamped = Math.min(Math.max(1, parsed), maxPassengers);
+
+                setFormData((current) => ({ ...current, passengers: clamped }));
+                // El aviso solo aparece si de verdad hubo recorte (escribir 9 en un sedán deja 5); al
+                // escribir un valor válido, el aviso anterior deja de ser cierto y se borra.
+                setCapacityNotice(
+                  clamped < parsed ? formatCapacityNotice(formData.vehicleType, maxPassengers) : null
+                );
+              }}
+              aria-describedby={capacityNotice !== null ? "passengers-notice" : undefined}
               className="min-h-11 md:min-h-0"
               required
             />
 
-            {/* Capacidad superada: el aviso va junto al campo que hay que corregir y el precio no se
-                calcula (PriceCard muestra "Esta combinación no es posible"). Se añade el máximo
-                válido para que no haya que adivinarlo probando. */}
-            {hasTooManyPassengers && (
-              <p id="passengers-error" className="text-xs text-destructive" aria-live="polite">
-                {VEHICLE_SUBJECTS[formData.vehicleType]} no puede llevar {formData.passengers}{" "}
-                pasajeros (máximo {maxPassengers}).
+            {/* Aviso discreto del ajuste (Fase 5.3): explica por qué el número cambió solo. En gris de
+                texto secundario y no en rojo a propósito: recortar es el comportamiento correcto del
+                campo, no un error del usuario. */}
+            {capacityNotice !== null && (
+              <p id="passengers-notice" className="text-xs text-muted-foreground" aria-live="polite">
+                {capacityNotice}
               </p>
             )}
           </div>
@@ -682,10 +724,9 @@ export default function QuoteForm({
               onValueChange={(value) => {
                 // El Select puede emitir null (ej: al limpiarse), solo actualizamos con un valor válido
                 if (value) {
-                  // Con un vehículo del catálogo elegido, el tipo es un dato DERIVADO (lo define el modelo):
-                  // el select se deshabilita en lugar de dejar que lo contradiga. Para elegir el tipo a
-                  // mano hay una salida explícita: "Otra marca / no está en la lista" en Marca.
-                  setFormData((current) => ({ ...current, vehicleType: value }));
+                  // Cambiar el tipo pasa por `applyVehicleType`: no solo lo fija, también ajusta los
+                  // pasajeros a la capacidad del nuevo vehículo (Fase 5.3).
+                  applyVehicleType(value);
                 }
               }}
             >
