@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { Check, Loader2, Locate, LocateFixed, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,6 +90,12 @@ export interface QuoteFormProps {
    * la tarjeta del precio, que en móvil queda debajo del mapa.
    */
   onViewPrice?: () => void;
+  /**
+   * Tipo de vehículo con el que ARRANCA el select (Fase 6.2: el del perfil del conductor). Es solo el
+   * valor inicial: en cuanto el usuario cambia el tipo a mano —o elige un vehículo del catálogo, que lo
+   * deduce— su elección manda y esta prop deja de aplicarse.
+   */
+  defaultVehicleType?: VehicleType;
 }
 
 interface AddressAutocompleteProps {
@@ -366,6 +372,7 @@ export default function QuoteForm({
   resolvingField = null,
   onRequestChange,
   onViewPrice,
+  defaultVehicleType,
 }: QuoteFormProps) {
   const [formData, setFormData] = useState<QuoteRequest>({
     origin: "",
@@ -380,9 +387,29 @@ export default function QuoteForm({
   // que el select de tipo se deshabilita en lugar de dejar que lo contradiga. Ver el propio select.
   const hasCatalogVehicle = formData.vehicle !== null;
 
+  /**
+   * Fase 6.2: el tipo de vehículo puede venir del perfil del conductor (`defaultVehicleType`) como
+   * valor INICIAL. Se DERIVA en vez de copiarlo al estado por dos motivos:
+   * 1. El perfil se lee de localStorage DESPUÉS de montar: copiarlo exigiría un `setState` dentro de un
+   *    efecto, que el linter del compilador de React de este repo prohíbe.
+   * 2. Así manda el usuario: en cuanto toca el select (o el catálogo), `manualVehicleType` se impone
+   *    sobre el perfil sin perder nada de lo que ya haya escrito en el formulario.
+   */
+  const [manualVehicleType, setManualVehicleType] = useState<VehicleType | null>(null);
+  const vehicleType = manualVehicleType ?? defaultVehicleType ?? formData.vehicleType;
+
+  /**
+   * Lo que se comunica al padre: `formData` con el tipo EFECTIVO. Memoizado para que el objeto no
+   * cambie de identidad en cada render (eso dispararía el efecto de `onRequestChange` en bucle).
+   */
+  const effectiveRequest = useMemo(
+    () => (formData.vehicleType === vehicleType ? formData : { ...formData, vehicleType }),
+    [formData, vehicleType]
+  );
+
   // Capacidad del vehículo elegido (Fase 5.3): es el `max` del campo "Pasajeros" y el MISMO número
   // que valida el motor, porque los dos leen `PASSENGER_CAPACITY` (types/index.ts).
-  const maxPassengers = PASSENGER_CAPACITY[formData.vehicleType];
+  const maxPassengers = PASSENGER_CAPACITY[vehicleType];
 
   /**
    * Aviso del último ajuste del campo "Pasajeros". Es estado (y no un valor derivado) porque habla
@@ -402,6 +429,8 @@ export default function QuoteForm({
    * tipo del modelo— para que el ajuste no se olvide en ninguno.
    */
   const applyVehicleType = (nextType: VehicleType) => {
+    // El usuario eligió: su elección manda sobre el tipo que viniera del perfil (Fase 6.2).
+    setManualVehicleType(nextType);
     const nextMax = PASSENGER_CAPACITY[nextType];
     // El recorte se decide con el valor actual del campo: dentro del updater de `setFormData` no se
     // puede avisar de nada sin volverlo impuro.
@@ -485,7 +514,7 @@ export default function QuoteForm({
     // El tipo lo define el modelo (dato derivado) y se aplica con `applyVehicleType` para que el
     // límite de pasajeros valga también por este camino. Si el modelo no estuviera en el catálogo (no
     // debería ocurrir) se conserva el tipo actual: el precio nunca se queda sin un `vehicleType`.
-    applyVehicleType(getVehicleTypeFromSelection(selection) ?? formData.vehicleType);
+    applyVehicleType(getVehicleTypeFromSelection(selection) ?? vehicleType);
   };
 
   const handleDestinationSelect = (coords: Coords) => {
@@ -528,8 +557,8 @@ export default function QuoteForm({
   // Fase 6: cada cambio del formulario se comunica a la página, que recalcula el precio en vivo con
   // `estimatePrice` (puro): no hay petición de red ni estado de carga que gestionar aquí.
   useEffect(() => {
-    onRequestChange?.(formData);
-  }, [onRequestChange, formData]);
+    onRequestChange?.(effectiveRequest);
+  }, [onRequestChange, effectiveRequest]);
 
   /**
    * "Buscando dirección..." del campo cuya dirección se está resolviendo: el spinner va junto al
@@ -698,7 +727,7 @@ export default function QuoteForm({
                 // El aviso solo aparece si de verdad hubo recorte (escribir 9 en un sedán deja 5); al
                 // escribir un valor válido, el aviso anterior deja de ser cierto y se borra.
                 setCapacityNotice(
-                  clamped < parsed ? formatCapacityNotice(formData.vehicleType, maxPassengers) : null
+                  clamped < parsed ? formatCapacityNotice(vehicleType, maxPassengers) : null
                 );
               }}
               aria-describedby={capacityNotice !== null ? "passengers-notice" : undefined}
@@ -719,7 +748,7 @@ export default function QuoteForm({
           <div className="grid min-w-0 gap-2">
             <Label htmlFor="vehicle">Vehículo</Label>
             <Select
-              value={formData.vehicleType}
+              value={vehicleType}
               disabled={hasCatalogVehicle}
               onValueChange={(value) => {
                 // El Select puede emitir null (ej: al limpiarse), solo actualizamos con un valor válido

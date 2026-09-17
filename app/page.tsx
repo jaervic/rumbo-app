@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import DriverProfileButton from "@/components/DriverProfileButton";
 import QuoteForm, { type QuoteFormHandle } from "@/components/QuoteForm";
 import MapModeToggle from "@/components/MapModeToggle";
 import MapPickerWrapper from "@/components/MapPickerWrapper";
 import PriceCard from "@/components/PriceCard";
+import { useDriverProfile } from "@/hooks/useDriverProfile";
 import { useRoute } from "@/hooks/useRoute";
 import { buildFallbackLocation, reverseGeocode } from "@/lib/geocoding";
 import type { GeoPoint } from "@/lib/distance";
@@ -27,6 +29,10 @@ const INITIAL_REQUEST: QuoteRequest = {
 };
 
 export default function Home() {
+  // Fase 6.2: perfil del conductor (localStorage). `profileLoading` es true hasta saber si hay perfil:
+  // con eso no se pinta el botón antes de tiempo (el HTML del servidor no puede leer localStorage).
+  const { profile, loading: profileLoading } = useDriverProfile();
+
   const [coords, setCoords] = useState<QuoteCoords>(INITIAL_COORDS);
   // Fase 6: última cotización emitida por QuoteForm (vehículo y pasajeros son los datos tarifables).
   const [request, setRequest] = useState<QuoteRequest>(INITIAL_REQUEST);
@@ -78,8 +84,11 @@ export default function Home() {
             durationIdealMin: route.durationMin,
             vehicleType: request.vehicleType,
             passengers: request.passengers,
+            // Fase 6.2: tarifas propias del conductor, si tiene perfil configurado (si no, el motor
+            // usa las de la tabla por vehículo, como hasta ahora).
+            tariffOverride: profile?.tariff,
           }),
-    [route, request.vehicleType, request.passengers]
+    [route, request.vehicleType, request.passengers, profile?.tariff]
   );
 
   // Tarjeta del precio: el botón del formulario la enfoca y desplaza hasta ella.
@@ -134,6 +143,12 @@ export default function Home() {
     <main className="min-h-dvh bg-background px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6 sm:space-y-8">
         {/* Tipografía escalonada: en móvil 320px un h1 de 3xl parte el título en 3 líneas. */}
+        {/* Barra superior: el perfil del conductor va arriba a la derecha (Fase 6.2). No se renderiza
+            hasta saber si hay perfil (`profileLoading`), y el botón se trunca si el nombre es largo. */}
+        <div className="flex justify-end">
+          {!profileLoading && <DriverProfileButton />}
+        </div>
+
         <header className="space-y-1.5 text-center sm:space-y-2">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
             Cotizador de Transporte
@@ -160,6 +175,9 @@ export default function Home() {
               onRequestChange={handleRequestChange}
               // El botón del formulario ya no calcula: lleva a la tarjeta del precio.
               onViewPrice={handleViewPrice}
+              // Fase 6.2: el tipo del vehículo del perfil se pre-selecciona mientras el usuario no lo
+              // cambie a mano en este formulario (ver `defaultVehicleType` en QuoteForm).
+              defaultVehicleType={profile?.vehicle.vehicleType}
             />
           </aside>
 

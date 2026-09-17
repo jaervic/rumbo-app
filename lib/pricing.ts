@@ -44,6 +44,11 @@
  * - `calculatePrice` queda para cuando NO hay ruta previa (p. ej. desde un Route Handler en la
  *   Fase 7, o desde una cotización guardada). No se usa en la UI para no pedir dos veces la ruta.
  *
+ * Fase 6.2 (IMPLEMENTADO): las tarifas propias del conductor (Nivel 1: bandera, km, minuto y mínimo)
+ * entran por `PricingInput.tariffOverride` (lib/driverProfile.ts) y pisan esos cuatro valores de la
+ * tabla del vehículo. Lo demás (pasajeros, capacidad, tráfico, nocturno, clima y el rango ±12 %) no
+ * cambia: la tarifa propia ajusta CUÁNTO se cobra por concepto, no cómo se modela el viaje.
+ *
  * TODO (Fase 6.2): factor por ANTIGÜEDAD del vehículo. `QuoteRequest.vehicle` (marca, modelo y año;
  * catálogo en lib/vehicleCatalog.ts) ya llega hasta aquí, y el catálogo expone `getVehicleModelYears`
  * y `describeVehicle`, así que el factor se puede añadir sin tocar el formulario ni el flujo de
@@ -58,6 +63,9 @@
 
 import { PASSENGER_CAPACITY } from "@/types";
 import type { Coords, QuoteRequest, QuoteResult, VehicleType } from "@/types";
+// Tipo solamente: el módulo del perfil toca localStorage y aquí NO se importa nada suyo en runtime
+// (el motor tiene que seguir siendo usable desde el servidor).
+import type { DriverTariffConfig } from "./driverProfile";
 import { getRoute, type RouteResult } from "./routing";
 
 /** Moneda de los precios calculados. Ver la nota de moneda en la cabecera del módulo. */
@@ -312,6 +320,20 @@ export interface PricingInput {
   /** Pasajeros del viaje, sin contar al conductor (1–capacidad del vehículo). */
   passengers: number;
   /**
+   * Tarifas propias del conductor (Fase 6.2, Nivel 1) que SUSTITUYEN a las del vehículo en los cuatro
+   * valores que él controla: bandera, costo por km, costo por minuto y tarifa mínima.
+   *
+   * Lo que NO cambia: el recargo por pasajero adicional y la capacidad (siguen saliendo del vehículo),
+   * ni los factores de tráfico, nocturno, clima y el rango ±12 % (fijan el modelo del viaje, no el
+   * precio por concepto).
+   *
+   * ⚠️ Rangos: el motor NO valida contra `TARIFF_FIELDS` (lib/driverProfile.ts) para no duplicar esa
+   * tabla. Solo descarta lo que no puede producir un precio (no finito o <= 0) y cae a las tarifas del
+   * vehículo; los rangos "de negocio" son cosa del editor, que no deja guardar fuera de ellos. Si otra
+   * vía (Supabase, Fase 7) alimenta esto, debe validar ANTES de llamar.
+   */
+  tariffOverride?: DriverTariffConfig;
+  /**
    * Momento de salida previsto. Por defecto, ahora: una cotización es para un viaje inmediato,
    * así que el factor de tráfico y el recargo nocturno deben usar la hora actual.
    */
@@ -385,9 +407,43 @@ export interface PriceEstimate extends QuoteResult {
  *   finitos o negativos, pasajeros inválidos o más pasajeros que la capacidad del vehículo). Nunca
  *   lanza: el llamador decide qué mostrar cuando no hay precio.
  */
+/**
+ * ¿La tarifa propia trae los cuatro valores usables (finitos y mayores que 0)?
+ *
+ * Es un guardián de seguridad, no una validación de negocio: con un 0 la bandera desaparecería del
+ * precio sin que nadie se diera cuenta, y con `NaN` el importe entero se volvería `NaN`. Cualquier
+ * valor fuera de rango se rechaza aquí y se cotiza con las tarifas del vehículo.
+ */
+function hasUsableTariff(override: DriverTariffConfig | undefined): override is DriverTariffConfig {
+  if (override === undefined) return false;
+
+  return (
+    Number.isFinite(override.baseFare) &&
+    override.baseFare > 0 &&
+    Number.isFinite(override.costPerKm) &&
+    override.costPerKm > 0 &&
+    Number.isFinite(override.costPerMin) &&
+    override.costPerMin > 0 &&
+    Number.isFinite(override.minFare) &&
+    override.minFare > 0
+  );
+}
+
 export function estimatePrice(input: PricingInput): PriceEstimate | null {
-  const { distanceKm, durationIdealMin, vehicleType, passengers, departureAt } = input;
-  const tariff = VEHICLE_TARIFFS[vehicleType];
+  const { distanceKm, durationIdealMin, vehicleType, passengers, departureAt, tariffOverride } = input;
+  const vehicleTariff = VEHICLE_TARIFFS[vehicleType];
+  // Fase 6.2: la tarifa del conductor pisa los cuatro valores de Nivel 1 y deja intacto lo demás
+  // (`perExtraPassenger` y `maxPassengers` siguen viniendo del vehículo). Mantener el nombre `tariff`
+  // deja el resto del cálculo igual que antes de esta fase.
+  const tariff: VehicleTariff = hasUsableTariff(tariffOverride)
+    ? {
+        ...vehicleTariff,
+        baseFare: tariffOverride.baseFare,
+        perKm: tariffOverride.costPerKm,
+        perMin: tariffOverride.costPerMin,
+        minimumFare: tariffOverride.minFare,
+      }
+    : vehicleTariff;
 
   // Entradas imposibles: mejor no dar precio que dar uno inventado.
   if (!Number.isFinite(distanceKm) || distanceKm < 0) return null;
@@ -456,6 +512,11 @@ export interface CalculatePriceOptions {
   route?: RouteResult | null;
   /** Momento de salida previsto (por defecto, ahora). Ver `PricingInput.departureAt`. */
   departureAt?: Date;
+  /**
+   * Tarifas propias del conductor (Fase 6.2). Se reenvían tal cual a `estimatePrice`: sirve para
+   * cotizar desde fuera de la UI (Route Handler de la Fase 7) con la tarifa guardada del conductor.
+   */
+  tariffOverride?: DriverTariffConfig;
   /** Cancelación de la petición de ruta (la usa el llamador cuando el usuario cambia de dirección). */
   signal?: AbortSignal;
 }
@@ -484,7 +545,7 @@ export async function calculatePrice(
   request: QuoteRequest,
   options: CalculatePriceOptions = {}
 ): Promise<PriceEstimate | null> {
-  const { route = null, origin = null, destination = null, departureAt, signal } = options;
+  const { route = null, origin = null, destination = null, departureAt, tariffOverride, signal } = options;
 
   const resolvedRoute =
     route ?? (origin !== null && destination !== null ? await getRoute(origin, destination, signal) : null);
@@ -497,6 +558,7 @@ export async function calculatePrice(
     vehicleType: request.vehicleType,
     passengers: request.passengers,
     departureAt,
+    tariffOverride,
   });
 }
 

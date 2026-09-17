@@ -44,6 +44,10 @@ medio        = max(bruto, viajeMínimo del vehículo)
 rango        = medio × (1 ± 12 %)        priceMin nunca baja del viaje mínimo
 ```
 
+Y desde la Fase 6.2, si el conductor tiene perfil con tarifas propias (`PricingInput.tariffOverride`),
+esos cuatro importes (bandera, km, minuto y mínimo) SUSTITUYEN a los de la tabla del vehículo. Lo demás
+—recargo por pasajero, capacidad y factores de tráfico, nocturno, clima y ±12 %— no cambia.
+
 ### Factores y constantes
 
 | Constante | Valor | Por qué |
@@ -155,17 +159,47 @@ isKnownBrand · isKnownModel · isBrandAvailableForType
   suman: **Peugeot, Daewoo, Dodge** (autos) y **Voge, Vento** (motos, todavía sin modelos cargados).
   De la Fase 6.1: Keeway, Skygo, AKT, motos extra y autos extra; **"Haojue" → "MD"**, y `getYears()`
   arranca en **1980** porque en Venezuela se cotizan carros de esa época.
-- `VehicleSelector` **no está montado en ningún sitio todavía**: es el selector del PERFIL DEL
-  CONDUCTOR (Fase 6.2). El QuoteForm sigue con `VehicleCatalogPicker` (Fase 6.1), que no filtra.
+- `VehicleSelector` se monta en el **panel del conductor** (Fase 6.2), filtrando marcas por el tipo
+  elegido. El QuoteForm sigue con `VehicleCatalogPicker` (Fase 6.1), que no filtra por tipo.
 - ⚠️ `CURRENT_YEAR = new Date().getFullYear()` se evalúa al importar el módulo y la página se
   prerenderiza: la lista de años queda congelada en la fecha del build (solo puede dar aviso de
   hidratación en el salto de año).
 
+### Perfil del conductor (Fase 6.2)
+
+`lib/driverProfile.ts` guarda en **localStorage** (`cotizador.driverProfile.v1`) el nombre, el vehículo
+y las **tarifas propias** (Nivel 1) del conductor. La UI es `DriverProfileButton` +
+`DriverProfilePanel` (Dialog de Base UI como sheet: **abajo en móvil**, lateral derecho desde `sm`) +
+`TariffEditor` (4 campos con su rango, validación en vivo y un ejemplo de 5 km / 15 min calculado con
+`estimatePrice`, sin OSRM).
+
+```text
+DriverProfileButton ──▶ DriverProfilePanel ──▶ VehicleSelector + TariffEditor
+        │                                             │
+        └── useDriverProfile (useSyncExternalStore) ──┴──▶ localStorage (v1)
+                                  │
+                   app/page.tsx ──┴──▶ estimatePrice({ ..., tariffOverride: profile?.tariff })
+```
+
+- **Sin perfil** no cambia nada: el motor usa `VEHICLE_TARIFFS` y el formulario arranca igual.
+- **Con perfil**: el precio se calcula con las tarifas del conductor, el botón resume "Juan · Corolla
+  2015" y el QuoteForm **pre-selecciona** el tipo del perfil mientras el usuario no lo cambie a mano
+  (dato derivado, no copiado: sin `useEffect` y sin remontar el formulario).
+- Los rangos viven en `TARIFF_FIELDS` (una sola tabla: la usan la validación y el editor); el motor
+  solo descarta valores imposibles (≤ 0 o `NaN`) y cae a la tabla del vehículo.
+- `useDriverProfile` usa `useSyncExternalStore`: el HTML del servidor no puede leer localStorage, así
+  que el primer render dice "aún no lo sé" (`loading`) y React re-renderiza al hidratar **sin
+  desajuste** y sin el `setState` dentro de un `useEffect` que el linter del repo prohíbe. El perfil se
+  sincroniza entre pestañas (evento `storage`).
+- El panel monta el formulario con una `key` que cambia al abrir: cada apertura parte del perfil
+  guardado y descarta lo escrito sin guardar.
+
 ### Pendiente
 
 - Convertir el precio a bolívares con la tasa BCV del día (Fase 7).
-- Fase 6.2: `VehicleSelector` en el perfil del conductor y persistencia del `Vehicle` en localStorage.
-  Fase 7: marcas/modelos personalizados a Supabase con `is_custom_brand` / `is_custom_model`.
+- Fase 7: sincronizar el `DriverProfile` con Supabase cuando haya login, permitir varios vehículos por
+  conductor y mandar las marcas/modelos personalizados con `is_custom_brand` / `is_custom_model`.
+  Fase 8: comparar la tarifa del conductor con el promedio de la app. Nivel 2: factores avanzados.
 - Factor por antigüedad del vehículo (Fase 6.2) y revisión del catálogo: años por generación y las
   marcas de moto que faltan (Vento, Ryan, Motomel...).
 - Calibrar `VEHICLE_TARIFFS` y `TRAFFIC_BANDS` con viajes reales cuando exista Supabase.
