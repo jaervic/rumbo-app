@@ -1,0 +1,519 @@
+# NOTES.md — Documentación viva del proyecto
+
+> Este archivo es la **fuente de verdad** del proyecto. Si abres un nuevo chat 
+> en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
+> cuando cambies algo estructural, no en cada micro-cambio.
+
+**Última actualización:** Fase 8.2 (refinamientos UX pre-validación)
+
+---
+
+## 1. Qué es este proyecto
+
+Web-app para **cotizar el precio de un servicio de transporte en Venezuela**. 
+Dirigida a **conductores independientes** (no a pasajeros). El conductor 
+configura sus propias tarifas, ingresa origen y destino, y obtiene un precio 
+estimado con desglose.
+
+**Propósito real:**
+- Resolver la fricción operativa diaria del cálculo de tarifas.
+- Ajustar precios a la realidad económica venezolana (inflación, gasolina, 
+  tasa de cambio).
+- Dar **velocidad**: el conductor debe cotizar en segundos, no minutos.
+- Dar **transparencia**: mostrar desglose para negociar con el cliente.
+
+**Diferenciador frente a Ridery/Yummy:**
+- Ridery/Yummy fijan precios. Esta app deja al conductor fijar sus tarifas.
+- Es un cotizador, no una plataforma de viajes. No conecta pasajeros con 
+  conductores, solo calcula precios.
+
+**Aspecto ético (del documento de ideas):**
+- Promueve comercio justo.
+- Protege al conductor de pérdidas por inflación o subestimación.
+- Protege al usuario de tarifas arbitrarias.
+- La app sugiere, el conductor decide. Debe quedar claro en la UI.
+
+**URL de producción:** https://proyectotransporte.vercel.app/
+**Repositorio:** https://github.com/jaervic/proyectotransporte
+
+---
+
+## 2. Estado actual (fase 8.2)
+
+La app **funciona end-to-end y está deployada**.
+
+**Lo que hace hoy:**
+- Autocompletado de direcciones con Photon + lista local de POIs venezolanos.
+- Mapa Leaflet interactivo con marcadores de origen/destino/ubicación actual.
+- Cálculo de ruta con OSRM (distancia y duración).
+- Motor de precios con tarifas por vehículo, factores de tráfico y pasajeros.
+- Precio en vivo con rango min/max y desglose colapsable.
+- Perfil del conductor (nombre + vehículo + tarifas propias) en localStorage.
+- Catálogo de vehículos con marcas/modelos venezolanos (incluye antiguos).
+- Responsive mobile-first.
+- Deploy en Vercel con HTTPS y redeploy automático por cada push a main.
+
+**Lo que NO hace todavía:**
+- No hay login ni backend (todo en localStorage).
+- No hay conversión a bolívares (solo USD).
+- No hay historial de carreras.
+- No hay rutas guardadas.
+- No hay múltiples paradas.
+- No hay monetización.
+- No hay analytics.
+
+---
+
+## 3. Stack técnico
+
+- **Next.js 16** con App Router
+- **TypeScript estricto** (prohibido `any`)
+- **Tailwind CSS v4**
+- **shadcn/ui** (Base UI + preset Nova + Lucide + Geist)
+- **Leaflet** + OpenStreetMap para el mapa
+- **Photon** (https://photon.komoot.io) para autocompletado y reverse geocoding
+- **OSRM público** (https://router.project-osrm.org) para rutas y distancias
+- **localStorage** para el perfil del conductor (por ahora)
+- **Vercel** para deploy
+
+**APIs externas (todas gratis, sin clave):**
+- Photon: geocoding y reverse geocoding
+- OSRM: rutas
+- OpenStreetMap: tiles del mapa
+
+**Futuro probable:**
+- **Supabase** (auth + Postgres + storage) — Fase 7 pendiente
+- **API del BCV** o `ve.dolarapi.com` para tasa de cambio — Fase 7
+- **Open-Meteo** para clima (opcional, no implementado)
+
+---
+
+## 4. Arquitectura de archivos
+
+```
+app/
+  layout.tsx              → layout raíz, metadata, viewport
+  page.tsx                → página principal, integra todo
+  globals.css             → estilos globales Tailwind
+
+components/
+  QuoteForm.tsx           → formulario (origen, destino, pasajeros, vehículo)
+  MapPicker.tsx           → mapa Leaflet con marcadores y polyline
+  MapPickerWrapper.tsx    → wrapper con dynamic import ssr:false
+  MapModeToggle.tsx       → toggle Origen/Destino para tocar el mapa
+  RouteInfoCard.tsx       → distancia y duración
+  PriceCard.tsx           → precio en vivo con desglose colapsable
+  VehicleSelector.tsx     → selector marca/modelo/año filtrado por tipo
+  TariffEditor.tsx        → editor de tarifas del conductor con preview
+  DriverProfilePanel.tsx  → panel de perfil (sheet/dialog)
+  DriverProfileButton.tsx → botón de perfil arriba de la página
+  ui/                     → componentes de shadcn/ui
+
+lib/
+  geocoding.ts            → Photon + reverse + sesgo geográfico
+  popularPlaces.ts        → lista curada de POIs venezolanos (~46 lugares)
+  routing.ts              → OSRM + cache de rutas
+  pricing.ts              → motor de precios (tarifas, factores, rango)
+  vehicleCatalog.ts       → catálogo de marcas/modelos venezolanos
+  driverProfile.ts        → gestión del perfil en localStorage
+  mapConfig.ts            → constantes de altura del mapa
+  utils.ts                → utilidades (cn de shadcn)
+
+hooks/
+  useRoute.ts             → calcula ruta con OSRM, maneja loading/error
+  useUserLocation.ts      → geolocalización del navegador
+  useDriverProfile.ts     → carga/guarda/borra perfil de localStorage
+
+types/
+  index.ts                → tipos generales (QuoteRequest, QuoteResult, etc.)
+  vehicle.ts              → tipo Vehicle
+
+public/                   → assets estáticos
+```
+
+**Archivos clave de configuración:**
+- `.gitignore` — excluye node_modules, .next, .env*, *.log, .DS_Store, .vercel
+- `.env.local.example` — variables de Supabase comentadas (no usadas aún)
+- `next.config.ts` — configuración mínima de Next.js
+- `components.json` — configuración de shadcn/ui
+- `tsconfig.json`, `eslint.config.mjs`, `postcss.config.mjs`
+
+---
+
+## 5. Historia de fases
+
+### Fase 1 — Setup base ✅
+- Next.js 16 + TypeScript + Tailwind v4 + shadcn/ui.
+- Estructura de carpetas.
+- Tipos base vacíos.
+- Esqueleto de `lib/pricing.ts`.
+
+### Fase 2 — Formulario + mapa Leaflet ✅
+- Formulario con origen, destino, pasajeros, tipo de vehículo.
+- Mapa Leaflet con Venezuela centrada.
+- Fix de `ssr: false` con `MapPickerWrapper` (Client Component).
+
+### Fase 3 — Geocoding con Photon ✅
+- Autocompletado con Photon (mejor que Nominatim para prefix matching).
+- Marcadores de origen y destino en el mapa.
+- `fitBounds` para encuadrar ambos puntos.
+
+### Fase 3.5 — Autocompletado avanzado ✅
+- Lista de sugerencias con dropdown flotante.
+- Sesgo geográfico a región central de Venezuela (Caracas por defecto).
+- Lista local de POIs populares (`lib/popularPlaces.ts`) que se consulta 
+  antes de Photon.
+- Diferenciación de resultados (urbanización/avenida incluidos).
+- Geolocalización del usuario para sesgar por cercanía.
+- Fijar origen/destino tocando el mapa (toggle).
+
+### Fase 3.6 — Responsive mobile-first ✅
+- Layout en columna en móvil, dos columnas en desktop.
+- Constante `MAP_HEIGHT_CLASS` centralizada.
+- Inputs grandes (48px), text-base para evitar zoom en iOS.
+
+### Fase 3.7 — UI/UX polish ✅
+- Marcador azul pulsante de ubicación del usuario.
+- Marcadores diferenciados (verde origen, rojo destino).
+- Estados de carga ("Calculando ruta...", "Buscando dirección...").
+- Botón GPS con estados.
+- `RouteInfoCard` con distancia y duración.
+
+### Fase 4 — OSRM ✅
+- Cálculo de ruta, distancia y duración.
+- Polyline azul en el mapa.
+- Cache por par de coordenadas.
+
+### Fase 5 — Motor de precios ✅
+- Tabla de tarifas por vehículo (moto, sedan, suv, van).
+- Factores: vehículo, pasajeros, tráfico, recargo nocturno.
+- Rango ±12% con piso en tarifa mínima.
+- Duración ajustada por franja horaria de Venezuela.
+- Precio en vivo con desglose.
+
+### Fase 5.1 — Claridad en desglose ✅
+- "Sedán · 3 pasajeros (2 adicionales)".
+- "Precio estimado para este viaje (USD)".
+
+### Fase 5.2 — Fix dropdown z-index ✅
+- El Select de vehículo ya no queda tapado por elementos inferiores.
+
+### Fase 5.3 — Capacidad por vehículo ✅
+- Moto: 1 pasajero, Sedán: 5, SUV: 6, Van: 6.
+- Input de pasajeros ajusta automáticamente.
+
+### Fase 6.1 — Catálogo de vehículos ✅
+- Marcas y modelos venezolanos (incluye modelos antiguos 80s-2000s).
+- `getBrandsByVehicleType()` para filtrar (moto solo muestra motos).
+- `VehicleSelector` con cascada marca → modelo → año.
+- No integrado todavía al QuoteForm (se usaría en el perfil).
+
+### Fase 6.2 — Panel del conductor ✅
+- Perfil con nombre + vehículo + tarifas propias (Nivel 1).
+- Persistencia en localStorage (`cotizador.driverProfile.v1`).
+- Preview de tarifas en vivo.
+- El QuoteForm usa la config del conductor automáticamente.
+
+### Fase 6.2.1 — Fix panel ✅
+- El panel ya no se cierra al tocar inputs.
+- Layout con ancho máximo (`max-w-lg`).
+
+### Fase 6.2.2 — Claridad bandera vs mínima ✅
+- Textos de ayuda en cada campo.
+- Dos ejemplos en el preview (normal y corto).
+
+### Fase 8 — Preparación para Vercel ✅
+- `.gitignore` y `README.md` listos.
+- Deploy exitoso en Vercel.
+
+### Fase 8.1 — Fix bugs móviles ✅
+- Input de pasajeros permite valores intermedios en móvil.
+- Cotización funciona en móvil tras elegir ubicaciones.
+- Vehículo opcional colapsable en QuoteForm.
+- "sedan" → "Sedán" en la UI.
+
+### Fase 8.2 — Refinamientos UX pre-validación ✅
+- Eliminada duplicación de "Vehículo" (perfil manda si existe).
+- Eliminada redundancia del precio recomendado.
+- Toggle Origen/Destino movido arriba del mapa.
+- Steppers (+/−) en input de pasajeros.
+
+---
+
+## 6. Reglas y convenciones
+
+### Código
+- **TypeScript estricto, prohibido `any`.**
+- **Componentes funcionales con hooks.** Nada de clases.
+- **No reescribir archivos completos** si solo cambia una parte.
+- **Explicar antes de codificar.** No lanzar código sin contexto.
+- **No instalar paquetes sin avisar.** Justificar siempre.
+- **Mobile-first siempre.** Los estilos base son para móvil.
+- **localStorage solo en Client Components** (`"use client"`) y con 
+  `useEffect` para evitar errores de hidratación.
+
+### Flujo de trabajo
+- **Una fase a la vez.** No mezclar.
+- **Un commit por fase funcional.**
+- **Start New Task en Cline al cambiar de fase grande** (ahorra tokens).
+- **Verificar `npm run build`, `npx tsc --noEmit`, `npm run lint`** antes 
+  de cada commit.
+- **Probar en móvil (F12 → device toolbar → iPhone 12 Pro)** antes de 
+  compartir cambios.
+
+### Producto
+- **La velocidad es el valor central.** El conductor cotiza en segundos.
+- **La transparencia es obligatoria.** Siempre mostrar desglose.
+- **La app sugiere, el conductor decide.** Debe quedar claro.
+- **No cobrar hasta validar.** Sin monetización hasta tener 100 usuarios.
+
+---
+
+## 7. Decisiones de diseño y por qué
+
+### Photon en vez de Nominatim
+Nominatim no hace prefix matching. "chaca" no encuentra "Chacao". Photon sí. 
+Además Photon busca POIs (Sambil, Farmatodo) mucho mejor.
+
+### Lista local de POIs antes de Photon
+Photon prioriza por nombre, no por popularidad. "el marq" no mostraba primero 
+"CC El Marqués". La lista local resuelve eso y da control.
+
+### Sesgo geográfico a región central
+Por defecto se sesga a Caracas (10.48, -66.90). Los conductores venezolanos 
+se concentran en la región central. Cuando el usuario da permiso de ubicación, 
+se usa su GPS real.
+
+### localStorage en vez de Supabase
+Para MVP y validación. Migrar a Supabase en Fase 7 cuando haya usuarios reales.
+
+### Perfil del conductor sin login
+Se guarda en localStorage. Cero fricción. Migrar a auth cuando sea necesario.
+
+### El catálogo de vehículos es informativo
+Marca/modelo/año no afectan al precio **todavía**. Sirven para:
+- Acumular datos para calibrar después.
+- Profesionalismo visual.
+- Features futuras (historial, filtros, comparativas).
+
+### Tarifa mínima + bandera de bajada
+- **Bandera:** monto fijo por iniciar el servicio.
+- **Tarifa mínima:** piso del precio final.
+- La fórmula: `precio = max(bandera + km*costo_km + min*costo_min, tarifa_mínima)`.
+- Se aplican ambos porque reflejan la realidad del taxi venezolano.
+
+### Duración ajustada por franja horaria
+OSRM da duración ideal sin tráfico. Se multiplica por un factor según hora 
+de Venezuela (America/Caracas, no la del dispositivo). Mañana pico ×1.35, 
+tarde pico ×1.35, madrugada ×0.95.
+
+### Rango ±12% con piso en tarifa mínima
+Da margen de negociación sin bajar del mínimo. El precio mínimo del rango 
+nunca está por debajo de la tarifa mínima.
+
+### No integración de API de clima (todavía)
+Open-Meteo es gratis, pero añade complejidad. Se implementará cuando haya 
+usuarios reales y se justifique.
+
+---
+
+## 8. Roadmap: qué sigue y por qué
+
+### Prioridad ALTA (después de validar con conductores)
+
+**8.3 — Validación con 5-10 conductores** ⚠️ PRÓXIMO PASO
+- Mostrar la app a conductores reales.
+- Observar sin interrumpir.
+- Anotar bugs, confusiones, faltantes, comentarios de precio.
+- NO cambiar nada durante la validación.
+
+**9.1 — Conversión a bolívares (tasa BCV)**
+- API gratuita: `ve.dolarapi.com/v1/dolares/oficial` o scraping del BCV.
+- Mostrar precio en USD **y** Bs.
+- Cache diario.
+- Alta prioridad según validación: los conductores venezolanos piensan 
+  en Bs, aunque guarden en USD.
+
+**9.2 — Rutas frecuentes**
+- Guardar pares origen-destino comunes.
+- Acceso rápido a "casa → aeropuerto".
+- Fácil de implementar, útil de verdad.
+
+**9.3 — Historial de carreras**
+- Guardar cada cotización.
+- Base para estadísticas y reportes.
+- localStorage primero, Supabase después.
+
+### Prioridad MEDIA
+
+**9.4 — Fase 7: Supabase + Auth**
+- Login opcional.
+- Sincronización de perfil entre dispositivos.
+- Historial en la nube.
+- Solo cuando la validación lo justifique.
+
+**9.5 — Múltiples paradas (waypoints)**
+- Origen + N paradas + destino.
+- Máximo 3 paradas.
+- OSRM soporta múltiples puntos.
+- Solo si la validación lo pide.
+
+**9.6 — Recargos por equipaje**
+- Si 7 de 10 conductores lo piden.
+- Factor adicional en pricing.
+
+### Prioridad BAJA (a 6+ meses)
+
+**10.1 — Modo avanzado (opcional)**
+- Panel colapsado con gasolina, km/l, depreciación.
+- Solo para conductores que quieran "modo ingeniero".
+- Riesgo: abruma al usuario promedio. Debe estar oculto.
+
+**10.2 — Reportes y recibos digitales**
+- Generación de PDF.
+- Compartir por WhatsApp.
+- Plantillas personalizables.
+
+**10.3 — Fase 9/10: Diseño final**
+- Paleta de colores de marca.
+- Logo.
+- Tipografía definitiva.
+- Modo oscuro (opcional).
+
+**10.4 — Analytics con Supabase**
+- Qué zonas se buscan más.
+- Qué POIs faltan.
+- Qué precios se cotizan más.
+- Qué features se usan.
+
+---
+
+## 9. Análisis de ideas futuras
+
+### Del documento "App de Cotización para Taxistas Independientes"
+
+**✅ Buenas y alineadas con el proyecto:**
+- **Enfoque en fricción operativa diaria.** Es el corazón del proyecto.
+- **Velocidad de uso.** Crítico. Debe cotizar en segundos.
+- **Aspectos éticos.** Transparencia, comercio justo, app sugiere y conductor 
+  decide. Debe quedar claro en la UI.
+- **Integrar servicio de mapas.** Ya hecho con Leaflet + Photon + OSRM.
+- **Guardar rutas frecuentes.** Buena idea, fácil, útil. Fase 9.2.
+- **Ajustar recargos por pasajeros.** Ya implementado.
+- **Recargo por horario nocturno.** Ya implementado.
+- **Tasa de cambio del día.** Fase 9.1, alta prioridad.
+
+**⚠️ Buenas pero prematuras:**
+- **Panel con costo del litro, rendimiento km/l, depreciación.** 
+  Conceptualmente bueno, operativamente peligroso. Abruma al conductor 
+  promedio. **Solo como modo avanzado colapsado, en Fase 10.1.** Además, 
+  el precio de la gasolina en Venezuela cambia constantemente.
+- **Recargo por equipaje.** Interesante, pero validar primero.
+- **Recibos digitales para enviar a clientes.** Buena idea, pero es una 
+  mini-app dentro de la app. Fase 10.2, no antes.
+- **Registro de ingresos/gastos diarios.** Cambia el producto. Ya no es 
+  un cotizador, es gestión financiera. Pivot a 1 año, no ahora.
+
+**❌ No recomendado:**
+- **Micro-suscripción SaaS con número limitado de cotizaciones gratuitas.**
+  El conductor venezolano no paga suscripciones fácilmente. Además, limitar 
+  cotizaciones mata la adopción. **No cobrar hasta tener 100 usuarios activos.**
+  Cuando se cobre, probablemente sea por features avanzadas (reportes, 
+  historial, recibos), no limitando lo básico.
+- **Versión Premium con herramientas contables.** Pivot a otro producto. 
+  Puede ser una línea de negocio futura, pero no del MVP.
+
+### Lo que falta en el documento
+- **Validación con conductores.** No menciona cómo saber si funciona.
+- **Contexto regulatorio.** ¿Es legal una app que sugiere tarifas en Venezuela? 
+  ¿Hay que registrar el servicio?
+- **Tamaño de mercado.** ¿Cuántos conductores independientes hay? ¿Cuántos 
+  con smartphone con datos? ¿Cuántos hacen suficientes carreras al día?
+- **Definición de éxito.** ¿Qué métricas indican que el proyecto funciona?
+
+---
+
+## 10. Lo que NO funciona o es prematuro
+
+- **Cobrar a los conductores ahora.** No hay masa crítica.
+- **Panel avanzado (gasolina, km/l, depreciación).** Abruma, cambia pronto.
+- **Registro de gastos.** Cambia el producto.
+- **Recibos digitales.** Feature grande, no urgente.
+- **APIs de tráfico real (TomTom, HERE, Google).** El factor heurístico 
+  por hora es suficiente para MVP.
+- **APIs de clima (Open-Meteo).** Bonito, pero añade dependencia externa.
+  Esperar a tener usuarios.
+- **Múltiples vehículos por conductor.** El 90% tiene uno solo.
+- **Login obligatorio.** Fricción innecesaria en MVP.
+- **Estilización final.** Debe venir al final, con todo funcional.
+
+---
+
+## 11. Lecciones aprendidas
+
+1. **La validación con usuarios reales vale más que 10 features nuevas.** 
+   Los bugs que aparecen en móvil real (como el input de pasajeros) no se 
+   ven en DevTools.
+
+2. **Menos contexto en Cline = menos costo y mejor calidad.** Start New Task 
+   por fase. No arrastrar conversaciones de 500k tokens.
+
+3. **Los warnings de build son señales.** `npm run build` + `npx tsc --noEmit` + 
+   `npm run lint` antes de cada commit.
+
+4. **El catálogo crece con datos, no con suposiciones.** La lista de POIs 
+   y de modelos de vehículos se ampliará con el feedback real.
+
+5. **Photon + OSRM son gratis y suficientes.** No pagar por Mapbox/Google 
+   hasta que el volumen lo justifique.
+
+6. **La velocidad es el diferenciador.** No agregar features que la reduzcan.
+
+7. **Deploy temprano motiva.** Ver la app en producción cambia la perspectiva.
+
+8. **Los bugs móviles aparecen tarde.** Probar en celular real antes de 
+   validar con conductores.
+
+9. **Un commit por fase.** Ayuda a revertir sin drama.
+
+10. **El disclaimer importa.** "La app sugiere, tú decides" protege legal 
+    y éticamente.
+
+---
+
+## 12. Cómo retomar el proyecto en un nuevo chat
+
+**Paso 1:** Copia este archivo completo.
+
+**Paso 2:** En un nuevo chat de Cline o DeepSeek, pega:
+
+```
+Voy a continuar un proyecto existente. Aquí está la documentación viva:
+
+[pegar NOTES.md completo]
+
+Estoy en la fase [X]. La tarea actual es [Y]. Reglas: TypeScript estricto, 
+mobile-first, no instalar paquetes sin avisar, no reescribir archivos 
+completos si solo cambias una parte.
+```
+
+**Paso 3:** Pega el prompt de la tarea específica.
+
+**Paso 4:** Al terminar la fase, actualiza este NOTES.md con lo nuevo.
+
+---
+
+## 13. Contacto y mantenimiento
+
+- **Creador:** Jaervic
+- **Repositorio:** https://github.com/jaervic/proyectotransporte
+- **Producción:** https://proyectotransporte.vercel.app/
+- **Modelo IA principal:** DeepSeek V4 Flash (para desarrollo)
+- **Modelo IA alternativo:** Gemini (gratis, para tareas simples)
+
+Cuando hagas cambios estructurales (nueva fase, nueva dependencia, nuevo 
+archivo importante), actualiza este NOTES.md en el mismo commit.
+
+---
+
+**Fin del documento.**
