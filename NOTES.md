@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P2 (CI y Supabase CLI)
+**Última actualización:** P3 (privacidad de la ubicación)
 
 ---
 
@@ -350,6 +350,12 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P3 — Privacidad de la ubicación ✅
+- `supabase/migrations/0003_location_privacy.sql`: revoca `select (location)` a `anon`/`authenticated`
+  (la RLS es por fila, no por columna; sin esto `select=location` exponía la coordenada exacta) y crea
+  la vista `public_drivers` sin `location`. La cercanía (Fase 3) leerá una coordenada aproximada por RPC.
+- El código de la app no cambia: `lib/drivers.ts` ya selecciona columnas explícitas sin `location`.
 
 ### P2 — CI y Supabase CLI ✅
 - `.github/workflows/ci.yml`: en cada push a `main` y PR corre `npm ci → typecheck → lint → test →

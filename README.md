@@ -422,9 +422,11 @@ Auth por **enlace mágico** (sin contraseñas): `/login` pide el correo, Supabas
 El esquema vive en `supabase/migrations/` (`0001_init.sql` y siguientes) y se aplica con el **CLI de
 Supabase** (`supabase db push`) o en el **SQL Editor**. Crea `profiles`, `drivers`, `driver_tariffs` y
 `reviews` con **RLS activada en todas** (deny by default): cada usuario escribe lo suyo y solo se lee
-públicamente lo que un conductor marca como visible. La ubicación exacta del conductor no se expone
-por SELECT; se leerá vía RPC aproximada (Fase 3). Un trigger crea el `profile` al registrarse y otro
-recalcula `rating_avg`/`rating_count` tras cada reseña. El modelo de suscripción (`plans`/
+públicamente lo que un conductor marca como visible. La ubicación exacta del conductor **no se puede
+leer por REST**: `0003_location_privacy.sql` revoca el SELECT de la columna `location` a `anon`/
+`authenticated` y expone una vista `public_drivers` sin ella; la cercanía (Fase 3) leerá una
+coordenada aproximada vía RPC. Un trigger crea el `profile` al registrarse y otro recalcula
+`rating_avg`/`rating_count` tras cada reseña. El modelo de suscripción (`plans`/
 `subscriptions`) se retiró en `0002_drop_subscriptions.sql`: el proyecto es open source con donaciones.
 
 El perfil del conductor **sigue en `localStorage`** por ahora; la migración a la nube llega en una
