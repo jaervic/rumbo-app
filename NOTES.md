@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P7 (reseñas: reporte y límites)
+**Última actualización:** P8 (observabilidad ligera)
 
 ---
 
@@ -354,6 +354,12 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P8 — Observabilidad ligera ✅
+- `lib/logger.ts`: log estructurado (una línea JSON por evento), sin dependencias externas.
+- `app/error.tsx` registra `render_error` con el `digest` (filtrable en los logs de la plataforma).
+- `app/api/health`: endpoint de salud (`{status, database, timestamp}`) para uptime/monitorización.
+- `robots.txt` excluye `/api/`.
 
 ### P7 — Reseñas: reporte y límites ✅
 - `submitReview`: **límite anti-abuso** de 5 reseñas por cuenta cada 24 h (comprobado en el servidor).

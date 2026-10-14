@@ -462,6 +462,13 @@ vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **l
 - **Reseñas y antiabuso** (P7): cada reseña se puede reportar (lo revisa el admin) y hay un **límite de
   5 reseñas por cuenta cada 24 h**, comprobado en el servidor.
 
+## Observabilidad (P8)
+
+Sin dependencias externas: `lib/logger.ts` emite **logs estructurados** (una línea JSON por evento) y
+`app/error.tsx` registra los fallos de render con su `digest`. Hay un **endpoint de salud** en
+`/api/health` que devuelve el estado del proceso y si la base responde (`{ status, database, timestamp }`),
+útil para uptime/monitorización.
+
 ## Confianza y moderación (T)
 
 Rumbo **no recoge documentos de identidad** (proyecto sin empresa). La confianza se construye con

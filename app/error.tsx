@@ -12,6 +12,7 @@
 import { useEffect } from "react";
 import { RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { logger } from "@/lib/logger";
 
 export default function GlobalError({
   error,
@@ -21,8 +22,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Un punto único de registro: aquí se engancharía un monitor (Sentry) cuando exista.
-    console.error(error);
+    // Log estructurado (P8): una línea JSON con el digest, filtrable en los logs de la plataforma.
+    logger.error("render_error", { digest: error.digest ?? null, message: error.message });
   }, [error]);
 
   return (
