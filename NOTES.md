@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P8 (observabilidad ligera)
+**Última actualización:** P9 (conversión a bolívares: BCV + Binance)
 
 ---
 
@@ -354,6 +354,14 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P9 — Conversión a bolívares (BCV + Binance) ✅
+- `app/api/rates` (servidor): pide **BCV** (`ve.dolarapi.com/.../oficial`) y **Binance P2P**
+  (`criptoya.com/api/binancep2p/USDT/VES/1`), valida (número finito y en rango) y cachea 5 min. Si una
+  fuente cae, devuelve la otra con `null`.
+- `hooks/useRates.ts` (cliente): carga las tasas una vez y las comparte. `PriceCard` muestra el rango en
+  **Bs por BCV y por Binance** (solo cuando llegan; sin desajuste de hidratación).
+- Ambas tasas se muestran siempre (decisión de producto): BCV = oficial, Binance = referencia de mercado.
 
 ### P8 — Observabilidad ligera ✅
 - `lib/logger.ts`: log estructurado (una línea JSON por evento), sin dependencias externas.

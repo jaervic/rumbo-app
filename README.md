@@ -74,8 +74,15 @@ hora del dispositivo, para que la franja horaria no dependa de cómo esté confi
 
 ### Moneda
 
-Los importes van en **USD ("divisa")**, la unidad en la que hoy cotizan los conductores
-independientes en Venezuela. Pendiente (Fase 7+): conversión a bolívares con la tasa BCV del día.
+Los importes base van en **USD ("divisa")**, la unidad en la que cotizan los conductores independientes
+en Venezuela. Además, `PriceCard` muestra el rango en **bolívares** con dos tasas (P9):
+
+- **BCV** (oficial): `ve.dolarapi.com/v1/dolares/oficial`.
+- **Binance P2P** (referencia de mercado): `criptoya.com/api/binancep2p/USDT/VES/1`.
+
+Se sirven desde `/api/rates` (servidor, con validación y caché de 5 min) y `hooks/useRates.ts` las
+comparte en el cliente. Ambas se muestran siempre; Binance se etiqueta como referencia de mercado, no
+oficial.
 
 ### Capacidades y validación
 

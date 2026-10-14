@@ -26,6 +26,7 @@ import type { Ref } from "react";
 import { ChevronDown, Clock, Loader2, Ruler, TriangleAlert, Users, Wallet } from "lucide-react";
 import { formatVehicleType, type PriceEstimate } from "@/lib/pricing";
 import type { RouteResult } from "@/lib/routing";
+import { useRates } from "@/hooks/useRates";
 import { cn } from "@/lib/utils";
 import type { QuoteRequest } from "@/types";
 
@@ -106,6 +107,13 @@ function roundCents(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/** Bolívares con separador de miles (punto), a mano para no depender de `Intl`. */
+function formatBs(value: number): string {
+  return Math.round(value)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
 /** Fila del desglose: etiqueta a la izquierda (puede envolver) e importe a la derecha. */
 function BreakdownRow({ label, value }: { label: string; value: string }) {
   return (
@@ -127,6 +135,9 @@ interface PriceContentProps {
 function PriceContent({ price, route, passengers, vehicleLabel }: PriceContentProps) {
   // Diferencia que aporta el viaje mínimo para que las filas del desglose sumen el precio final.
   const minimumFareDelta = roundCents(price.priceAvg - price.subtotal);
+  // Tasas para el precio en bolívares (P9). `null` hasta que el navegador las carga.
+  const rates = useRates();
+  const hasBs = rates !== null && (rates.bcv !== null || rates.binance !== null);
 
   return (
     <div className="space-y-2">
@@ -153,6 +164,25 @@ function PriceContent({ price, route, passengers, vehicleLabel }: PriceContentPr
           {formatUsd(price.priceAvg)}
         </span>
       </p>
+
+      {/* Precio en bolívares (P9): BCV (oficial) y Binance (mercado). Solo cuando hay tasas. */}
+      {hasBs && rates !== null && (
+        <p className="text-xs text-muted-foreground">
+          En bolívares:{" "}
+          {rates.bcv !== null && (
+            <span className="font-medium text-foreground">
+              Bs {formatBs(price.priceMin * rates.bcv)}–{formatBs(price.priceMax * rates.bcv)} (BCV)
+            </span>
+          )}
+          {rates.bcv !== null && rates.binance !== null && " · "}
+          {rates.binance !== null && (
+            <span className="font-medium text-foreground">
+              Bs {formatBs(price.priceMin * rates.binance)}–{formatBs(price.priceMax * rates.binance)}{" "}
+              (Binance)
+            </span>
+          )}
+        </p>
+      )}
 
       <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <li className="flex items-center gap-1.5" title="Distancia por carretera (OSRM).">
@@ -222,7 +252,8 @@ function PriceContent({ price, route, passengers, vehicleLabel }: PriceContentPr
 
         <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
           El rango (±{Math.round(price.priceSpread * 100)} %) deja margen para negociar según la
-          demanda. Precio en dólares; la conversión a bolívares llegará en una próxima versión.
+          demanda. Precio en dólares; la referencia en bolívares usa la tasa del BCV (oficial) y la de
+          Binance (mercado).
         </p>
       </details>
     </div>
