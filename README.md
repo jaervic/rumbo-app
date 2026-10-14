@@ -15,19 +15,22 @@ de OSRM. Sin backend: todo se calcula en el navegador y el perfil del conductor 
 - **Mapas:** [Leaflet](https://leafletjs.com/) + [OpenStreetMap](https://www.openstreetmap.org/)
 - **Rutas y distancia:** [OSRM](http://project-osrm.org/) (servidor público, sin API key)
 - **Autocompletado de direcciones:** [Photon](https://photon.komoot.io/) (OpenStreetMap, gratis)
-- **Base de Datos:** [Supabase](https://supabase.com/) (Próximamente)
-- **Deploy:** [Vercel](https://vercel.com/) (sitio estático, sin backend ni funciones serverless)
+- **Base de Datos y Auth:** [Supabase](https://supabase.com/) (Fase 1: auth por enlace mágico + esquema con RLS)
+- **Deploy:** [Vercel](https://vercel.com/) (el cotizador es estático; la Fase 1 añade un Route Handler de auth y un proxy de sesión)
 
 ## Estructura de Carpetas
 
 ```text
-app/            # Rutas y componentes de página (Next.js App Router)
+app/            # Rutas y componentes de página (Next.js App Router: /, /login, /auth/callback)
 components/     # Componentes reutilizables
   ui/           # Componentes de base (shadcn/ui sobre Base UI)
 hooks/          # Hooks de cliente (useRoute, useDriverProfile, useUserLocation)
 lib/            # Utilidades y lógica de negocio (pricing, geocoding, routing...)
-types/          # Definiciones de tipos TypeScript
+  supabase/     # Clientes de Supabase (browser/server/session) y config
+types/          # Definiciones de tipos TypeScript (incl. types/database.ts)
+supabase/       # Migraciones SQL (esquema + RLS) para Supabase
 public/         # Assets estáticos
+proxy.ts        # Refresco de sesión de Supabase (convención `proxy` de Next 16)
 ```
 
 En la raíz: `package.json` (scripts), `.env.local.example` (plantilla de variables),
@@ -305,7 +308,9 @@ npm run build
 npm run start     # sirve la build en http://localhost:3000
 ```
 
-La ruta `/` se prerenderiza como estática: no hay rutas de API ni funciones serverless.
+La ruta `/` y `/login` se prerenderizan como estáticas. `/auth/callback` es una ruta dinámica
+(Route Handler) y el proxy de sesión (`proxy.ts`) corre en el borde; ambos son no-op sin las
+variables de Supabase, así que el cotizador sigue siendo estático y funcional.
 
 ## Datos del conductor (localStorage)
 
@@ -322,10 +327,30 @@ La ruta `/` se prerenderiza como estática: no hay rutas de API ni funciones ser
 1. Copia `.env.local.example` a `.env.local`.
 2. Completa las variables de entorno necesarias.
 
-Hoy **ninguna es obligatoria**: Photon (`https://photon.komoot.io`) y OSRM
-(`https://router.project-osrm.org`) son APIs públicas y no piden clave. En el ejemplo solo están
-comentadas las de Supabase, que se activarán con el login. En Vercel los valores se cargan en
-*Settings → Environment Variables* y solo las `NEXT_PUBLIC_*` llegan al navegador.
+Hoy **ninguna es obligatoria para el cotizador**: Photon (`https://photon.komoot.io`) y OSRM
+(`https://router.project-osrm.org`) son APIs públicas y no piden clave. Para el **login** (Fase 1)
+hacen falta `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` (la `anon key` es pública
+por diseño; RLS protege los datos — **nunca** la `service_role` aquí). Si faltan, la app funciona
+igual: el proxy de sesión y los componentes de cuenta se desactivan solos.
+
+En Vercel los valores se cargan en *Settings → Environment Variables* y solo las `NEXT_PUBLIC_*`
+llegan al navegador.
+
+## Autenticación y base de datos (Fase 1)
+
+Auth por **enlace mágico** (sin contraseñas): `/login` pide el correo, Supabase envía un enlace y
+`/auth/callback` lo canjea por una sesión (con protección contra *open redirect* en el parámetro
+`next`). El proxy `proxy.ts` refresca la sesión en cada navegación.
+
+El esquema vive en `supabase/migrations/0001_init.sql` y se aplica en el **SQL Editor** de Supabase
+(o con el CLI). Crea `profiles`, `drivers`, `driver_tariffs`, `reviews`, `plans` y `subscriptions`
+con **RLS activada en todas** (deny by default): cada usuario escribe lo suyo y solo se lee
+públicamente lo que un conductor marca como visible. La ubicación exacta del conductor no se expone
+por SELECT; se leerá vía RPC aproximada (Fase 3). Un trigger crea el `profile` al registrarse y otro
+recalcula `rating_avg`/`rating_count` tras cada reseña.
+
+El perfil del conductor **sigue en `localStorage`** por ahora; la migración a la nube llega en una
+fase posterior.
 
 ## Deploy en Vercel
 

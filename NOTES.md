@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** Fase 0 (saneamiento, seguridad y pruebas)
+**Última actualización:** Fase 1 (Supabase + auth por enlace mágico)
 
 ---
 
@@ -54,7 +54,8 @@ La app **funciona end-to-end y está deployada**.
 - Deploy en Vercel con HTTPS y redeploy automático por cada push a main.
 
 **Lo que NO hace todavía:**
-- No hay login ni backend (todo en localStorage).
+- Hay **login** (enlace mágico, Fase 1) y esquema en Supabase, pero el perfil del conductor sigue en
+  `localStorage` y aún no hay perfiles públicos ni reseñas (llegan en la Fase 2).
 - No hay conversión a bolívares (solo USD).
 - No hay historial de carreras.
 - No hay rutas guardadas.
@@ -76,6 +77,7 @@ La app **funciona end-to-end y está deployada**.
 - **OSRM público** (https://router.project-osrm.org) para rutas y distancias
 - **localStorage** para el perfil del conductor (por ahora)
 - **Vercel** para deploy
+- **Supabase** (auth + Postgres + RLS) — Fase 1: enlace mágico y esquema en `supabase/migrations/`
 
 **APIs externas (todas gratis, sin clave):**
 - Photon: geocoding y reverse geocoding
@@ -83,8 +85,9 @@ La app **funciona end-to-end y está deployada**.
 - OpenStreetMap: tiles del mapa
 
 **Futuro probable:**
-- **Supabase** (auth + Postgres + storage) — Fase 7 pendiente
-- **API del BCV** o `ve.dolarapi.com` para tasa de cambio — Fase 7
+- **Supabase Storage** (fotos de perfil de conductor) y sincronización del `DriverProfile` a la
+  nube — pendiente (el auth y el esquema ya están en la Fase 1)
+- **API del BCV** o `ve.dolarapi.com` para tasa de cambio — Fase 9.1
 - **Open-Meteo** para clima (opcional, no implementado)
 
 ---
@@ -98,7 +101,10 @@ app/
   error.tsx               → límite de error (Client Component, con reset)
   not-found.tsx           → 404
   loading.tsx             → estado de carga
+  login/page.tsx          → acceso por enlace mágico (Fase 1)
+  auth/callback/route.ts  → canjea el código por sesión (Fase 1)
   globals.css             → estilos globales Tailwind
+proxy.ts                  → refresco de sesión Supabase (convención proxy de Next 16)
 
 components/
   QuoteForm.tsx           → formulario (origen, destino, pasajeros, vehículo)
@@ -110,6 +116,8 @@ components/
   TariffEditor.tsx        → editor de tarifas del conductor con preview
   DriverProfilePanel.tsx  → panel de perfil (sheet/dialog)
   DriverProfileButton.tsx → botón de perfil arriba de la página
+  AccountButton.tsx       → sesión: Entrar / correo + Salir (Fase 1)
+  LoginForm.tsx           → formulario de enlace mágico (Fase 1)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -122,6 +130,11 @@ lib/
   driverProfile.ts        → gestión del perfil en localStorage
   mapConfig.ts            → constantes de altura del mapa
   utils.ts                → utilidades (cn de shadcn)
+  supabase/
+    config.ts             → URL/anon key y bandera isSupabaseConfigured (Fase 1)
+    client.ts             → cliente browser singleton (Fase 1)
+    server.ts             → cliente server por petición, sobre cookies (Fase 1)
+    session.ts            → updateSession: refresco de sesión del proxy (Fase 1)
 
 hooks/
   useRoute.ts             → calcula ruta con OSRM, maneja loading/error
@@ -131,13 +144,17 @@ hooks/
 types/
   index.ts                → tipos generales (QuoteRequest, QuoteResult, etc.)
   vehicle.ts              → tipo Vehicle
+  database.ts             → tipos de las tablas de Supabase (Fase 1)
+
+supabase/
+  migrations/0001_init.sql → tablas + RLS + triggers (Fase 1)
 
 public/                   → assets estáticos
 ```
 
 **Archivos clave de configuración:**
 - `.gitignore` — excluye node_modules, .next, .env*, *.log, .DS_Store, .vercel
-- `.env.local.example` — variables de Supabase comentadas (no usadas aún)
+- `.env.local.example` — variables de Supabase (Fase 1; opcionales: sin ellas el cotizador funciona)
 - `next.config.ts` — cabeceras de seguridad (CSP, HSTS, Permissions-Policy...) y `poweredByHeader:false`
 - `vitest.config.mts` — runner de pruebas (entorno node + alias `@`)
 - `components.json` — configuración de shadcn/ui
@@ -255,6 +272,21 @@ public/                   → assets estáticos
   `divIcon`): menos dependencia externa y CSP más simple.
 - **Vitest** instalado y suite `lib/pricing.test.ts` (17 pruebas) del motor. Scripts `test`,
   `test:watch`, `typecheck`. `@types/node` alineado a `^22` (Node real).
+
+### Fase 1 — Supabase + auth por enlace mágico ✅
+- Paquetes: `@supabase/supabase-js`, `@supabase/ssr`, `zod` (para validación de Fase 2+).
+- Clientes en `lib/supabase/`: `config.ts` (bandera `isSupabaseConfigured`), `client.ts` (browser,
+  singleton), `server.ts` (por petición, sobre cookies) y `session.ts` (`updateSession`).
+- `proxy.ts` (convención **proxy** de Next 16, antes `middleware`) refresca la sesión y **es no-op
+  sin variables**: el cotizador sigue estático y funcional sin backend.
+- UI: `/login` + `components/LoginForm.tsx` (enlace mágico, sin contraseñas) y
+  `/auth/callback/route.ts` (canje del código con guard anti *open redirect*). `AccountButton` en la
+  cabecera muestra Entrar / correo + Salir.
+- Esquema `supabase/migrations/0001_init.sql`: `profiles`, `drivers`, `driver_tariffs`, `reviews`,
+  `plans`, `subscriptions`; **RLS en todas**; triggers de `updated_at`, alta de `profile` y recálculo
+  de `rating_avg`/`rating_count`. PostGIS (`location` geográfico) preparado para la Fase 3.
+- Decisión: el `DriverProfile` **sigue en localStorage**; la migración a la nube se pospone.
+- Pendiente de esta fase (deuda): CSP con nonces cuando haya más superficie dinámica.
 
 ---
 

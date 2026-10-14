@@ -1,0 +1,305 @@
+/**
+ * Tipos de la base de datos de Supabase (Fase 1).
+ *
+ * Se escriben a mano con el MISMO formato que genera `supabase gen types typescript`, para que
+ * `createClient<Database>(...)` dé tipos reales en consultas y `.insert()/.update()`. Cuando el
+ * esquema cambie, o bien se regenera con el CLI, o se actualiza este archivo en el mismo commit.
+ *
+ * Convención: `Row` = lo que devuelve un SELECT, `Insert` = lo que acepta un INSERT (con defaults
+ * opcionales) y `Update` = todo opcional.
+ */
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+/** Rol del usuario en la plataforma. */
+export type UserRole = "driver" | "customer";
+/** Estado de la suscripción del conductor (Fase 4). */
+export type SubscriptionStatus = "inactive" | "pending" | "active" | "expired";
+/** Tipo de vehículo en la base de datos (espejo de `VehicleType` de la app). */
+export type DbVehicleType = "moto" | "sedan" | "suv" | "van";
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          role: UserRole;
+          full_name: string;
+          phone: string | null;
+          avatar_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          role?: UserRole;
+          full_name?: string;
+          phone?: string | null;
+          avatar_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          role?: UserRole;
+          full_name?: string;
+          phone?: string | null;
+          avatar_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      drivers: {
+        Row: {
+          id: string;
+          profile_id: string;
+          bio: string;
+          photo_url: string | null;
+          vehicle_brand: string;
+          vehicle_model: string;
+          vehicle_year: number | null;
+          vehicle_type: DbVehicleType;
+          is_active: boolean;
+          is_visible: boolean;
+          /** Punto PostGIS (geography). El SDK lo entrega tal cual; se usa vía RPC, no en el cliente. */
+          location: unknown | null;
+          last_seen_at: string | null;
+          city: string | null;
+          rating_avg: number;
+          rating_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          profile_id: string;
+          bio?: string;
+          photo_url?: string | null;
+          vehicle_brand?: string;
+          vehicle_model?: string;
+          vehicle_year?: number | null;
+          vehicle_type?: DbVehicleType;
+          is_active?: boolean;
+          is_visible?: boolean;
+          location?: unknown | null;
+          last_seen_at?: string | null;
+          city?: string | null;
+          rating_avg?: number;
+          rating_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          profile_id?: string;
+          bio?: string;
+          photo_url?: string | null;
+          vehicle_brand?: string;
+          vehicle_model?: string;
+          vehicle_year?: number | null;
+          vehicle_type?: DbVehicleType;
+          is_active?: boolean;
+          is_visible?: boolean;
+          location?: unknown | null;
+          last_seen_at?: string | null;
+          city?: string | null;
+          rating_avg?: number;
+          rating_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "drivers_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      driver_tariffs: {
+        Row: {
+          driver_id: string;
+          base_fare: number;
+          cost_per_km: number;
+          cost_per_min: number;
+          min_fare: number;
+          updated_at: string;
+        };
+        Insert: {
+          driver_id: string;
+          base_fare: number;
+          cost_per_km: number;
+          cost_per_min: number;
+          min_fare: number;
+          updated_at?: string;
+        };
+        Update: {
+          driver_id?: string;
+          base_fare?: number;
+          cost_per_km?: number;
+          cost_per_min?: number;
+          min_fare?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "driver_tariffs_driver_id_fkey";
+            columns: ["driver_id"];
+            isOneToOne: true;
+            referencedRelation: "drivers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      reviews: {
+        Row: {
+          id: string;
+          driver_id: string;
+          customer_id: string;
+          rating: number;
+          comment: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          driver_id: string;
+          customer_id: string;
+          rating: number;
+          comment?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          driver_id?: string;
+          customer_id?: string;
+          rating?: number;
+          comment?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reviews_driver_id_fkey";
+            columns: ["driver_id"];
+            isOneToOne: false;
+            referencedRelation: "drivers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reviews_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      plans: {
+        Row: {
+          id: string;
+          name: string;
+          price_usd: number;
+          interval: string;
+          features: Json;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          name: string;
+          price_usd: number;
+          interval?: string;
+          features?: Json;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          price_usd?: number;
+          interval?: string;
+          features?: Json;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          driver_id: string;
+          plan_id: string | null;
+          status: SubscriptionStatus;
+          provider: string;
+          provider_ref: string | null;
+          current_period_end: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          driver_id: string;
+          plan_id?: string | null;
+          status?: SubscriptionStatus;
+          provider?: string;
+          provider_ref?: string | null;
+          current_period_end?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          driver_id?: string;
+          plan_id?: string | null;
+          status?: SubscriptionStatus;
+          provider?: string;
+          provider_ref?: string | null;
+          current_period_end?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_driver_id_fkey";
+            columns: ["driver_id"];
+            isOneToOne: true;
+            referencedRelation: "drivers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: {
+      user_role: UserRole;
+      subscription_status: SubscriptionStatus;
+      vehicle_type: DbVehicleType;
+    };
+    CompositeTypes: Record<string, never>;
+  };
+}
+
+/** Atajos de las filas más usadas (Fase 2+). */
+export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+export type Driver = Database["public"]["Tables"]["drivers"]["Row"];
+export type DriverTariff = Database["public"]["Tables"]["driver_tariffs"]["Row"];
+export type Review = Database["public"]["Tables"]["reviews"]["Row"];
+export type Plan = Database["public"]["Tables"]["plans"]["Row"];
+export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import AccountButton from "@/components/AccountButton";
 import DriverProfileButton from "@/components/DriverProfileButton";
 import QuoteForm, { type QuoteFormHandle } from "@/components/QuoteForm";
 import MapModeToggle from "@/components/MapModeToggle";
@@ -145,7 +146,8 @@ export default function Home() {
         {/* Tipografía escalonada: en móvil 320px un h1 de 3xl parte el título en 3 líneas. */}
         {/* Barra superior: el perfil del conductor va arriba a la derecha (Fase 6.2). No se renderiza
             hasta saber si hay perfil (`profileLoading`), y el botón se trunca si el nombre es largo. */}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
+          <AccountButton />
           {!profileLoading && <DriverProfileButton />}
         </div>
 
