@@ -28,6 +28,7 @@ import TariffEditor from "@/components/TariffEditor";
 import VehicleSelector from "@/components/VehicleSelector";
 import { saveDriverProfile } from "@/lib/actions/drivers";
 import { createClient } from "@/lib/supabase/client";
+import { formatPhoneForInput } from "@/lib/phone";
 import { DEFAULT_TARIFF, isValidName, type DriverTariffConfig } from "@/lib/driverProfile";
 import { formatVehicleType, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
 import { getYears } from "@/lib/vehicleCatalog";
@@ -73,6 +74,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
   const [isVisible, setIsVisible] = useState(() => initial?.isVisible ?? false);
   const [acceptTerms, setAcceptTerms] = useState(() => initial?.termsAccepted ?? false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(() => initial?.photoUrl ?? null);
+  const [phone, setPhone] = useState(() => formatPhoneForInput(initial?.phone ?? null));
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -165,6 +167,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
         tariff,
         acceptTerms,
         photoUrl: photoUrl ?? "",
+        phone: phone.trim(),
       });
 
       if (result.ok) {
@@ -204,6 +207,23 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
             placeholder="Ej: Caracas"
             className="min-h-11 text-base md:min-h-0 md:text-sm"
           />
+        </div>
+
+        {/* Contacto (P5): opcional. Se muestra solo a clientes con sesión, nunca en el HTML público. */}
+        <div className="grid gap-2">
+          <Label htmlFor="driver-phone">WhatsApp de contacto (opcional)</Label>
+          <Input
+            id="driver-phone"
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            placeholder="Ej: 0412-1234567"
+            className="min-h-11 text-base md:min-h-0 md:text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Solo se muestra a clientes con sesión iniciada. Nunca aparece en la web pública.
+          </p>
         </div>
 
         <div className="grid gap-2">

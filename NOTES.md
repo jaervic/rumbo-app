@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P4 (fotos de conductor)
+**Última actualización:** P5 (contacto por WhatsApp)
 
 ---
 
@@ -354,6 +354,12 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P5 — Contacto por WhatsApp ✅
+- `lib/phone.ts`: normaliza teléfonos venezolanos a `58...` y arma enlaces `wa.me`.
+- El conductor añade su WhatsApp en `/panel` (opcional; se guarda normalizado en `profiles.phone`).
+- **Privacidad**: el número se muestra SOLO a clientes con sesión (`getPublicDriver(id, includeContact)`);
+  para anónimos el número no llega a la página. Botón "Contactar por WhatsApp" con mensaje predefinido.
 
 ### P4 — Fotos de conductor ✅
 - Migración `0005_storage.sql`: bucket público `driver-photos`; escritura solo del dueño (ruta = uid),

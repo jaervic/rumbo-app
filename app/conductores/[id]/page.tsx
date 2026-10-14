@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Car, MapPin, Wallet } from "lucide-react";
+import { ArrowLeft, Car, MapPin, MessageCircle, Wallet } from "lucide-react";
 import DriverRating from "@/components/DriverRating";
+import InlineMessage from "@/components/InlineMessage";
 import ReportButton from "@/components/ReportButton";
+import { whatsappUrl } from "@/lib/phone";
 import ReviewForm from "@/components/ReviewForm";
 import ReviewList from "@/components/ReviewList";
 import { getPublicDriver, listDriverReviews } from "@/lib/drivers";
@@ -35,12 +37,15 @@ export default async function DriverDetailPage({ params }: { params: Promise<{ i
     );
   }
 
-  const driver = await getPublicDriver(id);
-  if (driver === null) notFound();
-
-  const [reviews, supabase] = await Promise.all([listDriverReviews(id), createClient()]);
+  const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   const isAuthenticated = auth.user !== null;
+
+  // El contacto (P5) solo se pide si hay sesión; para anónimos el número no llega ni a la página.
+  const driver = await getPublicDriver(id, isAuthenticated);
+  if (driver === null) notFound();
+
+  const reviews = await listDriverReviews(id);
 
   const vehicleLabel = `${driver.vehicleBrand} ${driver.vehicleModel}${
     driver.vehicleYear !== null ? ` ${driver.vehicleYear}` : ""
@@ -125,6 +130,29 @@ export default async function DriverDetailPage({ params }: { params: Promise<{ i
             </dl>
           </section>
         )}
+
+        {/* Contacto (P5): el número solo aparece con sesión; sin sesión se invita a entrar. */}
+        {driver.phone !== null ? (
+          <a
+            href={whatsappUrl(
+              driver.phone,
+              `Hola ${driver.name}, vi tu perfil en Rumbo y quiero cotizar un viaje.`
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-success px-4 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+            Contactar por WhatsApp
+          </a>
+        ) : driver.hasContact && !isAuthenticated ? (
+          <InlineMessage variant="info">
+            <Link href="/login" className="font-medium text-foreground underline underline-offset-4">
+              Inicia sesión
+            </Link>{" "}
+            para ver el contacto de {driver.name}.
+          </InlineMessage>
+        ) : null}
 
         <section className="space-y-4">
           <h2 className="text-sm font-semibold text-foreground">

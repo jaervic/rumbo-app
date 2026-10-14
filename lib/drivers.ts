@@ -35,6 +35,10 @@ export interface PublicDriverSummary {
 export interface PublicDriverDetail extends PublicDriverSummary {
   lastSeenAt: string | null;
   tariff: DriverTariff | null;
+  /** Teléfono de contacto (P5). Solo se rellena si el visitante tiene sesión. */
+  phone: string | null;
+  /** ¿El conductor tiene teléfono configurado? (siempre disponible, para invitar a iniciar sesión). */
+  hasContact: boolean;
 }
 
 /** Reseña pública con el nombre del cliente que la escribió. */
@@ -64,6 +68,8 @@ export interface MyDriver {
   termsAccepted: boolean;
   /** T: cuenta suspendida. */
   banned: boolean;
+  /** P5: teléfono de contacto (normalizado, solo dígitos) o `null`. */
+  phone: string | null;
 }
 
 /** Reporte para el panel de moderación (T). */
@@ -193,8 +199,15 @@ export async function listVisibleDrivers(limit = 60): Promise<PublicDriverSummar
   }));
 }
 
-/** Detalle público de un conductor visible. `null` si no existe o no es visible. */
-export async function getPublicDriver(id: string): Promise<PublicDriverDetail | null> {
+/**
+ * Detalle público de un conductor visible. `null` si no existe o no es visible.
+ * `includeContact` (P5): solo con sesión se devuelve el teléfono; para visitantes anónimos es `null`
+ * (así el número no viaja al HTML público).
+ */
+export async function getPublicDriver(
+  id: string,
+  includeContact = false
+): Promise<PublicDriverDetail | null> {
   const supabase = await createClient();
 
   const { data: driver, error } = await supabase
@@ -209,7 +222,11 @@ export async function getPublicDriver(id: string): Promise<PublicDriverDetail | 
   if (error !== null || driver === null) return null;
 
   const [{ data: profile }, { data: tariff }] = await Promise.all([
-    supabase.from("profiles").select("full_name").eq("id", driver.profile_id).maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("full_name, phone")
+      .eq("id", driver.profile_id)
+      .maybeSingle(),
     supabase.from("driver_tariffs").select("*").eq("driver_id", driver.id).maybeSingle(),
   ]);
 
@@ -227,6 +244,8 @@ export async function getPublicDriver(id: string): Promise<PublicDriverDetail | 
     ratingCount: driver.rating_count,
     lastSeenAt: driver.last_seen_at,
     tariff: tariff ?? null,
+    phone: includeContact ? (profile?.phone ?? null) : null,
+    hasContact: (profile?.phone ?? null) !== null,
   };
 }
 
@@ -283,7 +302,7 @@ export async function getMyDriver(profileId: string): Promise<MyDriver | null> {
   const [{ data: profile }, { data: tariff }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name, banned, terms_accepted_at")
+      .select("full_name, banned, terms_accepted_at, phone")
       .eq("id", profileId)
       .maybeSingle(),
     supabase.from("driver_tariffs").select("*").eq("driver_id", driver.id).maybeSingle(),
@@ -304,5 +323,6 @@ export async function getMyDriver(profileId: string): Promise<MyDriver | null> {
     tariff: tariff ?? null,
     termsAccepted: profile?.terms_accepted_at != null,
     banned: profile?.banned === true,
+    phone: profile?.phone ?? null,
   };
 }

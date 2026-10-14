@@ -45,6 +45,8 @@ export const driverProfileInputSchema = z.object({
   /** URL pública de la foto en el Storage (P4); vacío = sin foto. Se muestra con `next/image`,
    *  que solo permite orígenes del `remotePatterns` de `next.config.ts`. */
   photoUrl: z.string().trim().max(500).default(""),
+  /** Teléfono de contacto (P5), opcional. Se normaliza en la acción antes de guardarlo. */
+  phone: z.string().trim().max(30).default(""),
 });
 
 export const reviewInputSchema = z.object({

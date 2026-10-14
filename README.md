@@ -453,6 +453,9 @@ vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **l
 - **Foto de perfil** (P4): el conductor sube una imagen desde `/panel` al bucket público
   `driver-photos` de Supabase Storage (migración `0005_storage.sql`). La escritura está limitada al
   dueño por RLS; la imagen se sirve con `next/image` (origen permitido en `next.config.ts`).
+- **Contacto por WhatsApp** (P5): el conductor puede añadir su número (opcional) en `/panel`; se
+  normaliza (`lib/phone.ts`) y **solo se muestra a clientes con sesión** (nunca en el HTML público).
+  Desde la ficha aparece un botón de WhatsApp con mensaje predefinido.
 
 ## Confianza y moderación (T)
 

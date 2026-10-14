@@ -14,6 +14,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { normalizeVenezuelaPhone } from "@/lib/phone";
 import { driverProfileInputSchema, reportInputSchema, reviewInputSchema } from "@/lib/validation";
 import type { ActionResult } from "@/types";
 
@@ -55,12 +56,19 @@ export async function saveDriverProfile(input: unknown): Promise<ActionResult> {
     return { ok: false, error: "Debes aceptar las normas para publicar tu ficha." };
   }
 
-  // 1) Rol, nombre y términos en el perfil. Upsert por si el trigger de alta no existía al registrarse.
+  // Teléfono de contacto (P5): se guarda normalizado; vacío = sin contacto.
+  const normalizedPhone = data.phone.length > 0 ? normalizeVenezuelaPhone(data.phone) : null;
+  if (data.phone.length > 0 && normalizedPhone === null) {
+    return { ok: false, error: "Escribe un teléfono venezolano válido (ej. 0412-1234567)." };
+  }
+
+  // 1) Rol, nombre, teléfono y términos en el perfil. Upsert por si el trigger no existía.
   const { error: profileError } = await supabase.from("profiles").upsert(
     {
       id: auth.user.id,
       role: "driver",
       full_name: data.fullName,
+      phone: normalizedPhone,
       terms_accepted_at: termsAcceptedAt,
     },
     { onConflict: "id" }
