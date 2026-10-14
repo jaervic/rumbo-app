@@ -1,9 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Car, MapPin } from "lucide-react";
+import { Car, MapPin, Navigation } from "lucide-react";
 import DriverRating from "@/components/DriverRating";
 import { formatVehicleType } from "@/lib/pricing";
 import type { PublicDriverSummary } from "@/lib/drivers";
+
+/** Kilómetros con un decimal y coma (es-VE), a mano para no depender de `Intl`. */
+function formatDistance(distanceKm: number): string {
+  return distanceKm.toFixed(1).replace(".", ",");
+}
 
 /** Iniciales para el avatar provisional ("Juan Pérez" -> "JP"); "?" si no hay nombre usable. */
 function initials(name: string): string {
@@ -18,7 +23,14 @@ function initials(name: string): string {
  * Jerarquía: avatar + nombre arriba (lo primero que se reconoce), vehículo debajo, valoración a la
  * derecha como referencia rápida, y bio/ciudad como contexto. `active:scale` da respuesta táctil.
  */
-export default function DriverCard({ driver }: { driver: PublicDriverSummary }) {
+export default function DriverCard({
+  driver,
+  distanceKm,
+}: {
+  driver: PublicDriverSummary;
+  /** Distancia (P6) cuando se muestra en la búsqueda de cercanía. */
+  distanceKm?: number;
+}) {
   const vehicleLabel = `${driver.vehicleBrand} ${driver.vehicleModel}${
     driver.vehicleYear !== null ? ` ${driver.vehicleYear}` : ""
   }`;
@@ -60,12 +72,19 @@ export default function DriverCard({ driver }: { driver: PublicDriverSummary }) 
         <p className="line-clamp-2 text-sm text-muted-foreground">{driver.bio}</p>
       )}
 
-      {driver.city !== null && driver.city.length > 0 && (
-        <p className="mt-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-          <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-          {driver.city}
-        </p>
-      )}
+      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {driver.city !== null && driver.city.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+            {driver.city}
+          </span>
+        )}
+        {distanceKm !== undefined && (
+          <span className="flex items-center gap-1.5 font-medium text-foreground">
+            <Navigation className="size-3.5 shrink-0" aria-hidden="true" />a {formatDistance(distanceKm)} km
+          </span>
+        )}
+      </div>
     </Link>
   );
 }

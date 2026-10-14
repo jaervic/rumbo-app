@@ -456,6 +456,9 @@ vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **l
 - **Contacto por WhatsApp** (P5): el conductor puede añadir su número (opcional) en `/panel`; se
   normaliza (`lib/phone.ts`) y **solo se muestra a clientes con sesión** (nunca en el HTML público).
   Desde la ficha aparece un botón de WhatsApp con mensaje predefinido.
+- **Conductores cercanos** (P6): `/conductores` ofrece "Buscar cerca de mí" (pide el GPS al pulsar) y
+  consulta la RPC PostGIS `nearby_drivers` (`0006_nearby.sql`), que ordena por distancia y devuelve la
+  **coordenada aproximada** (redondeada), nunca la exacta.
 
 ## Confianza y moderación (T)
 

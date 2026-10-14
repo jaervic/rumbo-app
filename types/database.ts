@@ -294,7 +294,32 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      nearby_drivers: {
+        Args: {
+          p_lat: number;
+          p_lng: number;
+          p_radius_km?: number;
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          bio: string;
+          city: string | null;
+          photo_url: string | null;
+          vehicle_brand: string;
+          vehicle_model: string;
+          vehicle_year: number | null;
+          vehicle_type: DbVehicleType;
+          rating_avg: number;
+          rating_count: number;
+          distance_km: number;
+          latitude: number;
+          longitude: number;
+        }[];
+      };
+    };
     Enums: {
       user_role: UserRole;
       vehicle_type: DbVehicleType;

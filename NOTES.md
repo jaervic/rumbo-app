@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P5 (contacto por WhatsApp)
+**Última actualización:** P6 (conductores cercanos con PostGIS)
 
 ---
 
@@ -354,6 +354,14 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P6 — Conductores cercanos (PostGIS) ✅
+- Migración `0006_nearby.sql`: RPC `nearby_drivers(lat,lng,radio,limit)` `security definer` (puede leer
+  `location`, revocada a `anon` en 0003), devuelve conductores visibles/activos/no baneados ordenados
+  por distancia y con la **coordenada aproximada** (redondeada a ~1,1 km) + distancia real.
+- `lib/drivers.ts` (`nearbyDrivers`) + acción `findNearbyDrivers` (`NearbyResult`).
+- UI: `components/NearbyDrivers.tsx` en `/conductores` (pide GPS solo al pulsar, muestra resultados por
+  cercanía con la distancia; `DriverCard` acepta `distanceKm`). El listado completo sigue debajo.
 
 ### P5 — Contacto por WhatsApp ✅
 - `lib/phone.ts`: normaliza teléfonos venezolanos a `58...` y arma enlaces `wa.me`.

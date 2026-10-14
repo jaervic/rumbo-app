@@ -5,6 +5,7 @@ import { ArrowLeft, UserPlus, Users } from "lucide-react";
 import DriverCard from "@/components/DriverCard";
 import DriverGridSkeleton from "@/components/DriverGridSkeleton";
 import EmptyState from "@/components/EmptyState";
+import NearbyDrivers from "@/components/NearbyDrivers";
 import { listVisibleDrivers } from "@/lib/drivers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -44,9 +45,16 @@ export default function DriversPage() {
         </header>
 
         {isSupabaseConfigured ? (
-          <Suspense fallback={<DriverGridSkeleton />}>
-            <DriverList />
-          </Suspense>
+          <>
+            <NearbyDrivers />
+
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-foreground">Todos los conductores</h2>
+              <Suspense fallback={<DriverGridSkeleton />}>
+                <DriverList />
+              </Suspense>
+            </section>
+          </>
         ) : (
           <EmptyState
             icon={Users}

@@ -199,6 +199,44 @@ export async function listVisibleDrivers(limit = 60): Promise<PublicDriverSummar
   }));
 }
 
+/** Conductor cercano (P6): ficha resumida + distancia. La coordenada viene APROXIMADA de la RPC. */
+export interface NearbyDriver extends PublicDriverSummary {
+  distanceKm: number;
+}
+
+/** Conductores visibles/activos a menos de `radiusKm` de un punto, por cercanía (RPC PostGIS). */
+export async function nearbyDrivers(
+  lat: number,
+  lng: number,
+  radiusKm = 10
+): Promise<NearbyDriver[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("nearby_drivers", {
+    p_lat: lat,
+    p_lng: lng,
+    p_radius_km: radiusKm,
+    p_limit: 50,
+  });
+
+  if (error !== null || data === null) return [];
+
+  return data.map((row) => ({
+    id: row.id,
+    name: row.name,
+    bio: row.bio,
+    city: row.city,
+    photoUrl: row.photo_url,
+    vehicleBrand: row.vehicle_brand,
+    vehicleModel: row.vehicle_model,
+    vehicleYear: row.vehicle_year,
+    vehicleType: row.vehicle_type,
+    ratingAvg: toNumber(row.rating_avg),
+    ratingCount: row.rating_count,
+    distanceKm: row.distance_km,
+  }));
+}
+
 /**
  * Detalle público de un conductor visible. `null` si no existe o no es visible.
  * `includeContact` (P5): solo con sesión se devuelve el teléfono; para visitantes anónimos es `null`

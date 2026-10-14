@@ -15,8 +15,19 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { normalizeVenezuelaPhone } from "@/lib/phone";
-import { driverProfileInputSchema, reportInputSchema, reviewInputSchema } from "@/lib/validation";
+import { nearbyDrivers, type NearbyDriver } from "@/lib/drivers";
+import {
+  driverProfileInputSchema,
+  nearbyInputSchema,
+  reportInputSchema,
+  reviewInputSchema,
+} from "@/lib/validation";
 import type { ActionResult } from "@/types";
+
+/** Resultado de la búsqueda de cercanía: lista de conductores o un error legible. */
+export type NearbyResult =
+  | { ok: true; drivers: NearbyDriver[] }
+  | { ok: false; error: string };
 
 /** Guarda (crea o actualiza) la ficha pública del conductor autenticado. */
 export async function saveDriverProfile(input: unknown): Promise<ActionResult> {
@@ -206,4 +217,19 @@ export async function submitReport(input: unknown): Promise<ActionResult> {
   }
 
   return { ok: true };
+}
+
+/** Busca conductores cercanos (P6). La ubicación la aporta el cliente (GPS); se valida aquí. */
+export async function findNearbyDrivers(input: unknown): Promise<NearbyResult> {
+  if (!isSupabaseConfigured) {
+    return { ok: false, error: "Supabase no está configurado." };
+  }
+
+  const parsed = nearbyInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Ubicación inválida." };
+  }
+
+  const drivers = await nearbyDrivers(parsed.data.lat, parsed.data.lng, parsed.data.radiusKm);
+  return { ok: true, drivers };
 }

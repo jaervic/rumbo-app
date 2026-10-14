@@ -77,6 +77,12 @@ export const driverBanInputSchema = z.object({
   banned: z.boolean(),
 });
 
+export const nearbyInputSchema = z.object({
+  lat: z.number().finite().min(-90).max(90),
+  lng: z.number().finite().min(-180).max(180),
+  radiusKm: z.number().finite().min(1).max(50).default(10),
+});
+
 export type DriverProfileInput = z.infer<typeof driverProfileInputSchema>;
 export type ReviewInput = z.infer<typeof reviewInputSchema>;
 export type ReportInput = z.infer<typeof reportInputSchema>;
