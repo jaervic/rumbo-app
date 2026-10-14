@@ -27,6 +27,27 @@ export const PASSENGER_CAPACITY: Record<VehicleType, number> = {
 };
 
 /**
+ * Type guard de `VehicleType` para datos que llegan de FUERA del compilador (localStorage,
+ * Supabase, JSON...).
+ *
+ * ¿Por qué existe? `PASSENGER_CAPACITY[vehicleType]` y `VEHICLE_TARIFFS[vehicleType].maxPassengers`
+ * asumen que la clave es válida; un `vehicleType` corrupto (p. ej. un perfil manipulado en
+ * localStorage) haría que `estimatePrice` intentara leer `.maxPassengers` de `undefined` y lanzara
+ * un `TypeError`. Validar en la frontera con este guard evita que un dato malo tumbe el cálculo.
+ *
+ * La comprobación se apoya en `PASSENGER_CAPACITY` para que la lista de tipos válidos siga viviendo
+ * en un solo sitio: si mañana se añade un tipo, hay que añadirlo a `VehicleType` y a esta tabla.
+ */
+export function isVehicleType(value: unknown): value is VehicleType {
+  // `hasOwnProperty` y no `value in PASSENGER_CAPACITY` ni un indexado directo: así "toString",
+  // "constructor" y demás claves heredadas de `Object.prototype` NO cuentan como tipos válidos.
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(PASSENGER_CAPACITY, value)
+  );
+}
+
+/**
  * Vehículo concreto elegido del catálogo de la Fase 6.1 (marca + modelo + año).
  *
  * Los ids son los del catálogo local (`lib/vehicleCatalog.ts`), no nombres legibles: el texto se

@@ -21,6 +21,7 @@
  * para hidratar sin desajustes.
  */
 
+import { isVehicleType } from "@/types";
 import type { Vehicle } from "@/types/vehicle";
 
 /** Tarifas propias del conductor, en USD (Nivel 1). */
@@ -159,8 +160,13 @@ function isDriverProfile(value: unknown): value is DriverProfile {
     vehicle !== null &&
     typeof vehicle.brand === "string" &&
     typeof vehicle.model === "string" &&
+    // `year` debe ser un entero positivo: un año suelto (0, -3, 2015.5) no es un año de vehículo.
     typeof vehicle.year === "number" &&
-    typeof vehicle.vehicleType === "string" &&
+    Number.isInteger(vehicle.year) &&
+    vehicle.year > 0 &&
+    // `isVehicleType` valida el tipo contra la tabla real: así un `vehicleType` corrupto no puede
+    // llegar al motor de precios (que leería `.maxPassengers` de `undefined` y lanzaría).
+    isVehicleType(vehicle.vehicleType) &&
     typeof tariff === "object" &&
     tariff !== null &&
     numericKeys.every((key) => typeof tariff[key] === "number")

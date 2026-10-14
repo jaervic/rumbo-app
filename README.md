@@ -246,7 +246,8 @@ Detectado al probar la URL de producción en un celular real:
 - Tráfico en vivo (TomTom/HERE) y clima (Open-Meteo) en lugar de las heurísticas estáticas.
 - Si el usuario deja la página abierta y cruza una franja horaria (p. ej. las 22:00), el precio se
   actualiza al siguiente cambio de ruta/vehículo/pasajeros: falta un reloj que lo refresque solo.
-- Instalar Vitest y convertir en suite permanente las comprobaciones del motor (Fase 9).
+- ~~Instalar Vitest~~ **Hecho en la Fase 0**: la suite del motor vive en `lib/pricing.test.ts`. Falta
+  ampliarla (rutas, geocoding, perfil del conductor) y añadir CI que la corra en cada push.
 
 ## Cómo correr en local
 
@@ -268,10 +269,34 @@ APIs públicas sin clave, así que la app arranca sin `.env.local`.
 | `npm run build` | Build de producción en `.next/`, con chequeo de tipos de TypeScript |
 | `npm run start` | Sirve la build de producción (requiere `npm run build` antes) |
 | `npm run lint` | ESLint 9 (flat config de `eslint-config-next`) |
+| `npm run typecheck` | `tsc --noEmit` (requiere haber corrido `next build` al menos una vez para los tipos globales de Next) |
+| `npm run test` | Vitest en modo `run` (una pasada) sobre la suite del motor de precios |
+| `npm run test:watch` | Vitest en modo vigilancia durante el desarrollo |
 
 > En Next.js 16 `next build` **ya no ejecuta ESLint**: los avisos del linter solo se ven con
 > `npm run lint`, y el build de Vercel tampoco los mira. Si quieres que sean bloqueantes, cambia el
 > *Build Command* de Vercel a `npm run lint && npm run build`.
+
+## Seguridad y pruebas (Fase 0)
+
+**Cabeceras de seguridad** (`next.config.ts`, aplicadas a todas las rutas): `Content-Security-Policy`
+(orígenes permitidos: los propios, los tiles de OpenStreetMap, Photon y OSRM), `X-Content-Type-Options:
+nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` (solo geolocalización para
+el propio sitio) y `Strict-Transport-Security` + `upgrade-insecure-requests` en producción. Además
+`poweredByHeader: false`. La CSP usa `'unsafe-inline'` para los scripts de hidratación de Next; migrar
+a nonces queda pendiente de cuando haya servidor dinámico (Supabase, Fase 1).
+
+**Dependencias**: el proyecto fija **Next.js 16.4** (el 16.3.5 tenía una vulnerabilidad crítica). Los
+iconos del mapa ya no se cargan desde `unpkg.com` (todos los marcadores usan `divIcon` inline). Queda
+una vulnerabilidad alta en `braces`, dependencia de desarrollo del CLI de `shadcn` que **no entra en el
+bundle de runtime** y aún no tiene versión corregida.
+
+**Datos que llegan de fuera**: los perfiles de `localStorage` se validan con `isVehicleType`
+(`types/index.ts`) antes de usarse, así que un `vehicleType` corrupto no puede tumbar el motor.
+
+**Pruebas**: `lib/pricing.test.ts` cubre el motor de precios (duración ajustada, viaje mínimo, recargo
+nocturno, rango ±12 %, desglose que suma exacto, tarifas propias, casos `null` y el guard de tipos).
+Se ejecutan con `npm run test` (Vitest, entorno `node`).
 
 ## Build y start en producción
 

@@ -9,20 +9,12 @@ import "leaflet/dist/leaflet.css";
 import { MAP_HEIGHT_CLASS } from "@/lib/mapConfig";
 import { cn } from "@/lib/utils";
 
-// Fix para los iconos de Leaflet en Next.js
-const iconRetinaUrl = "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png";
-const iconUrl = "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
-const shadowUrl = "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png";
-
-const DefaultIcon = L.icon({
-  iconRetinaUrl,
-  iconUrl,
-  shadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
+/**
+ * Todos los marcadores del mapa (origen, destino y ubicación del usuario) usan `L.divIcon` con
+ * HTML/SVG inline, así que NO hace falta el icono por defecto de Leaflet ni sus PNG. Antes se
+ * cargaban desde `unpkg.com` (assets externos por CDN): eliminarlos quita una dependencia de red,
+ * simplifica la CSP y evita que un tercero pueda alterar los iconos.
+ */
 
 /**
  * Marcadores propios con DivIcon (HTML/SVG inline: sin assets externos ni peticiones extra):

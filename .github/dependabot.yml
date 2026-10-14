@@ -1,0 +1,22 @@
+# Alertas y PRs automáticos de dependencias (seguridad de la cadena de suministro).
+# Un PR semanal agrupado para npm; los avisos de seguridad los abre Dependabot por separado.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Mantiene actualizadas las actions de GitHub (si se añade CI más adelante).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

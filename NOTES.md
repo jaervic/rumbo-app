@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** Fase 8.2 (refinamientos UX pre-validación)
+**Última actualización:** Fase 0 (saneamiento, seguridad y pruebas)
 
 ---
 
@@ -66,8 +66,9 @@ La app **funciona end-to-end y está deployada**.
 
 ## 3. Stack técnico
 
-- **Next.js 16** con App Router
+- **Next.js 16.4** con App Router
 - **TypeScript estricto** (prohibido `any`)
+- **Vitest** para pruebas del motor (suite en `lib/pricing.test.ts`)
 - **Tailwind CSS v4**
 - **shadcn/ui** (Base UI + preset Nova + Lucide + Geist)
 - **Leaflet** + OpenStreetMap para el mapa
@@ -94,6 +95,9 @@ La app **funciona end-to-end y está deployada**.
 app/
   layout.tsx              → layout raíz, metadata, viewport
   page.tsx                → página principal, integra todo
+  error.tsx               → límite de error (Client Component, con reset)
+  not-found.tsx           → 404
+  loading.tsx             → estado de carga
   globals.css             → estilos globales Tailwind
 
 components/
@@ -101,7 +105,6 @@ components/
   MapPicker.tsx           → mapa Leaflet con marcadores y polyline
   MapPickerWrapper.tsx    → wrapper con dynamic import ssr:false
   MapModeToggle.tsx       → toggle Origen/Destino para tocar el mapa
-  RouteInfoCard.tsx       → distancia y duración
   PriceCard.tsx           → precio en vivo con desglose colapsable
   VehicleSelector.tsx     → selector marca/modelo/año filtrado por tipo
   TariffEditor.tsx        → editor de tarifas del conductor con preview
@@ -114,6 +117,7 @@ lib/
   popularPlaces.ts        → lista curada de POIs venezolanos (~46 lugares)
   routing.ts              → OSRM + cache de rutas
   pricing.ts              → motor de precios (tarifas, factores, rango)
+  pricing.test.ts         → suite Vitest del motor (Fase 0)
   vehicleCatalog.ts       → catálogo de marcas/modelos venezolanos
   driverProfile.ts        → gestión del perfil en localStorage
   mapConfig.ts            → constantes de altura del mapa
@@ -134,7 +138,8 @@ public/                   → assets estáticos
 **Archivos clave de configuración:**
 - `.gitignore` — excluye node_modules, .next, .env*, *.log, .DS_Store, .vercel
 - `.env.local.example` — variables de Supabase comentadas (no usadas aún)
-- `next.config.ts` — configuración mínima de Next.js
+- `next.config.ts` — cabeceras de seguridad (CSP, HSTS, Permissions-Policy...) y `poweredByHeader:false`
+- `vitest.config.mts` — runner de pruebas (entorno node + alias `@`)
 - `components.json` — configuración de shadcn/ui
 - `tsconfig.json`, `eslint.config.mjs`, `postcss.config.mjs`
 
@@ -238,6 +243,19 @@ public/                   → assets estáticos
 - Toggle Origen/Destino movido arriba del mapa.
 - Steppers (+/−) en input de pasajeros.
 
+### Fase 0 — Saneamiento, seguridad y pruebas ✅
+- Actualizado **Next.js 16.3.5 → 16.4.0** (el 16.3.5 tenía una vulnerabilidad crítica: RCE en
+  `next/og`). `npm audit fix` aplicado; queda solo `braces` (dev, CLI de shadcn, fuera del bundle).
+- **Guard `isVehicleType`** (`types/index.ts`) + `isDriverProfile` endurecido (`year` entero positivo,
+  tipo válido): un perfil corrupto en localStorage ya no puede tumbar `estimatePrice`.
+- **Páginas** `app/error.tsx`, `app/not-found.tsx` y `app/loading.tsx` (antes: pantalla en blanco).
+- **Cabeceras de seguridad** en `next.config.ts` (CSP, HSTS, `nosniff`, `frame-ancestors`, Permissions
+  -Policy, `poweredByHeader:false`). CSP con `'unsafe-inline'` (deuda: nonces en la Fase 1).
+- **Eliminada** la carga de iconos desde `unpkg.com` en `MapPicker.tsx` (todos los marcadores usan
+  `divIcon`): menos dependencia externa y CSP más simple.
+- **Vitest** instalado y suite `lib/pricing.test.ts` (17 pruebas) del motor. Scripts `test`,
+  `test:watch`, `typecheck`. `@types/node` alineado a `^22` (Node real).
+
 ---
 
 ## 6. Reglas y convenciones
@@ -318,6 +336,14 @@ usuarios reales y se justifique.
 ---
 
 ## 8. Roadmap: qué sigue y por qué
+
+> **Decisión de producto (Fase 0): ampliar a marketplace, con la suscripción EN PAUSA.**
+> Se acordó evolucionar de cotizador a marketplace de dos lados en fases: (1) **Supabase + auth**,
+> (2) **perfiles públicos y reseñas** para los clientes, (3) **conductores cercanos** (PostGIS) y
+> (4) **esquema de suscripción** con aprobación manual (Pago Móvil/Zelle/Binance), abstracto y sin
+> pasarela real. **No se cobra todavía**: el cotizador sigue gratis y la suscripción no se activa
+> hasta validar el MVP actual con conductores reales. Esto matiza —no contradice— el "no cobrar hasta
+> tener 100 usuarios" de más abajo: primero validar, después monetizar.
 
 ### Prioridad ALTA (después de validar con conductores)
 
