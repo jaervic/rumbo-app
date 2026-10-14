@@ -42,6 +42,9 @@ export const driverProfileInputSchema = z.object({
   tariff: tariffInputSchema,
   /** Aceptación de las normas (T): sin esto no se puede publicar ni reseñar. */
   acceptTerms: z.boolean(),
+  /** URL pública de la foto en el Storage (P4); vacío = sin foto. Se muestra con `next/image`,
+   *  que solo permite orígenes del `remotePatterns` de `next.config.ts`. */
+  photoUrl: z.string().trim().max(500).default(""),
 });
 
 export const reviewInputSchema = z.object({

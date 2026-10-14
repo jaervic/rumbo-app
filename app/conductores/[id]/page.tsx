@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Car, MapPin, Wallet } from "lucide-react";
 import DriverRating from "@/components/DriverRating";
@@ -58,22 +59,33 @@ export default async function DriverDetailPage({ params }: { params: Promise<{ i
 
         <section className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
-                {driver.name}
-              </h1>
-              <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Car className="size-4 shrink-0" aria-hidden="true" />
-                <span className="truncate">
-                  {vehicleLabel} · {formatVehicleType(driver.vehicleType)}
-                </span>
-              </p>
-              {driver.city !== null && driver.city.length > 0 && (
-                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <MapPin className="size-4 shrink-0" aria-hidden="true" />
-                  {driver.city}
-                </p>
+            <div className="flex min-w-0 items-start gap-3">
+              {driver.photoUrl !== null && (
+                <Image
+                  src={driver.photoUrl}
+                  alt={`Foto de ${driver.name}`}
+                  width={56}
+                  height={56}
+                  className="size-14 shrink-0 rounded-full object-cover"
+                />
               )}
+              <div className="min-w-0 space-y-1">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                  {driver.name}
+                </h1>
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Car className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="truncate">
+                    {vehicleLabel} · {formatVehicleType(driver.vehicleType)}
+                  </span>
+                </p>
+                {driver.city !== null && driver.city.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <MapPin className="size-4 shrink-0" aria-hidden="true" />
+                    {driver.city}
+                  </p>
+                )}
+              </div>
             </div>
             <DriverRating
               value={driver.ratingAvg}

@@ -52,6 +52,7 @@ export interface MyDriver {
   fullName: string;
   bio: string;
   city: string;
+  photoUrl: string | null;
   vehicleBrand: string;
   vehicleModel: string;
   vehicleYear: number | null;
@@ -272,7 +273,7 @@ export async function getMyDriver(profileId: string): Promise<MyDriver | null> {
   const { data: driver, error } = await supabase
     .from("drivers")
     .select(
-      "id, bio, city, vehicle_brand, vehicle_model, vehicle_year, vehicle_type, is_visible, is_active"
+      "id, bio, city, photo_url, vehicle_brand, vehicle_model, vehicle_year, vehicle_type, is_visible, is_active"
     )
     .eq("profile_id", profileId)
     .maybeSingle();
@@ -293,6 +294,7 @@ export async function getMyDriver(profileId: string): Promise<MyDriver | null> {
     fullName: profile?.full_name ?? "",
     bio: driver.bio,
     city: driver.city ?? "",
+    photoUrl: driver.photo_url,
     vehicleBrand: driver.vehicle_brand,
     vehicleModel: driver.vehicle_model,
     vehicleYear: driver.vehicle_year,

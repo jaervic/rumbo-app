@@ -78,6 +78,7 @@ export async function saveDriverProfile(input: unknown): Promise<ActionResult> {
         profile_id: auth.user.id,
         bio: data.bio,
         city: data.city.length > 0 ? data.city : null,
+        photo_url: data.photoUrl.length > 0 ? data.photoUrl : null,
         vehicle_brand: data.vehicleBrand,
         vehicle_model: data.vehicleModel,
         vehicle_year: data.vehicleYear,

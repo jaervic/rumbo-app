@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** T (confianza y moderación, sin KYC)
+**Última actualización:** P4 (fotos de conductor)
 
 ---
 
@@ -354,6 +354,13 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P4 — Fotos de conductor ✅
+- Migración `0005_storage.sql`: bucket público `driver-photos`; escritura solo del dueño (ruta = uid),
+  lectura pública. `next.config.ts` añade el `remotePatterns` de Supabase Storage para `next/image`.
+- `DriverProfileForm`: subida de foto (valida tipo/tamaño en cliente, sube al Storage y guarda la URL;
+  `photoUrl` viaja en la Server Action). `DriverCard` y el perfil público muestran la foto (o iniciales).
+- Pendiente operativo: aplicar la migración (`npm run db:push`) para que el bucket exista.
 
 ### T — Confianza y moderación (sin KYC) ✅
 - Migración `0004_trust.sql`: `profiles` gana `terms_accepted_at`, `banned` e `is_admin`; tablas

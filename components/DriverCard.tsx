@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Car, MapPin } from "lucide-react";
 import DriverRating from "@/components/DriverRating";
 import { formatVehicleType } from "@/lib/pricing";
@@ -29,11 +30,18 @@ export default function DriverCard({ driver }: { driver: PublicDriverSummary }) 
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground"
-            aria-hidden="true"
-          >
-            {initials(driver.name)}
+          <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-sm font-semibold text-accent-foreground">
+            {driver.photoUrl !== null ? (
+              <Image
+                src={driver.photoUrl}
+                alt={`Foto de ${driver.name}`}
+                width={40}
+                height={40}
+                className="size-10 object-cover"
+              />
+            ) : (
+              <span aria-hidden="true">{initials(driver.name)}</span>
+            )}
           </span>
           <div className="min-w-0">
             <p className="truncate font-semibold text-foreground">{driver.name}</p>

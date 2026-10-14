@@ -450,6 +450,9 @@ vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **l
   hay `loading.tsx` global (un límite de streaming convertiría los 404 en 200).
 - La página pública se renderiza en el servidor (dinámica, lee la base): mejor SEO y sin exponer la
   ubicación exacta del conductor.
+- **Foto de perfil** (P4): el conductor sube una imagen desde `/panel` al bucket público
+  `driver-photos` de Supabase Storage (migración `0005_storage.sql`). La escritura está limitada al
+  dueño por RLS; la imagen se sirve con `next/image` (origen permitido en `next.config.ts`).
 
 ## Confianza y moderación (T)
 

@@ -8,10 +8,11 @@
  * se arma el objeto y se muestra el resultado.
  */
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { Check, Eye, EyeOff, Loader2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ import {
 import TariffEditor from "@/components/TariffEditor";
 import VehicleSelector from "@/components/VehicleSelector";
 import { saveDriverProfile } from "@/lib/actions/drivers";
+import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_TARIFF, isValidName, type DriverTariffConfig } from "@/lib/driverProfile";
 import { formatVehicleType, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
 import { getYears } from "@/lib/vehicleCatalog";
@@ -70,9 +72,13 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
   const [tariff, setTariff] = useState<DriverTariffConfig>(() => toTariff(initial));
   const [isVisible, setIsVisible] = useState(() => initial?.isVisible ?? false);
   const [acceptTerms, setAcceptTerms] = useState(() => initial?.termsAccepted ?? false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(() => initial?.photoUrl ?? null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
   const [pending, startTransition] = useTransition();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const banned = initial?.banned ?? false;
   const nameValid = isValidName(fullName);
@@ -81,6 +87,59 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
   const handleVehicleTypeChange = (next: VehicleType) => {
     setVehicleType(next);
     setVehicle(null); // las marcas/modelos de un tipo no valen para otro
+  };
+
+  /**
+   * Sube la foto al Storage (P4). La escribe el propio conductor (la RLS del bucket exige que la
+   * ruta empiece por su uid). Se valida el tipo y el tamaño ANTES de subir.
+   */
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file === undefined) return;
+
+    setPhotoError(null);
+
+    if (!file.type.startsWith("image/")) {
+      setPhotoError("El archivo debe ser una imagen.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoError("La imagen no puede pesar más de 2 MB.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getUser();
+      if (auth.user === null) {
+        setPhotoError("Inicia sesión para subir una foto.");
+        return;
+      }
+
+      const ext = file.name.includes(".") ? file.name.split(".").pop()?.toLowerCase() : "jpg";
+      const path = `${auth.user.id}/avatar-${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("driver-photos")
+        .upload(path, file, { upsert: true, contentType: file.type });
+
+      if (error !== null) {
+        setPhotoError("No se pudo subir la imagen. Inténtalo de nuevo.");
+        return;
+      }
+
+      const { data: publicUrl } = supabase.storage.from("driver-photos").getPublicUrl(path);
+      setPhotoUrl(publicUrl.publicUrl);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removePhoto = () => {
+    setPhotoUrl(null);
+    setPhotoError(null);
+    if (fileInputRef.current !== null) fileInputRef.current.value = "";
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -105,6 +164,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
         isVisible,
         tariff,
         acceptTerms,
+        photoUrl: photoUrl ?? "",
       });
 
       if (result.ok) {
@@ -157,6 +217,64 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
             placeholder="Años de experiencia, zonas que cubres, trato, etc."
             className="w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
           />
+        </div>
+
+        {/* Foto de perfil (P4). Se sube al Storage público; la escritura la limita la RLS del bucket. */}
+        <div className="flex items-center gap-4">
+          <span className="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-accent-foreground">
+            {photoUrl !== null ? (
+              <Image
+                src={photoUrl}
+                alt="Tu foto de perfil"
+                width={64}
+                height={64}
+                className="size-16 object-cover"
+              />
+            ) : (
+              <Upload className="size-5" aria-hidden="true" />
+            )}
+          </span>
+
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploading ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Upload className="size-4" aria-hidden="true" />
+                )}
+                {photoUrl !== null ? "Cambiar foto" : "Subir foto"}
+              </Button>
+
+              {photoUrl !== null && (
+                <Button type="button" variant="ghost" size="sm" onClick={removePhoto}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                  Quitar
+                </Button>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">JPG o PNG, máximo 2 MB.</p>
+            {photoError !== null && (
+              <p className="text-xs text-destructive" role="alert">
+                {photoError}
+              </p>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="sr-only"
+            />
+          </div>
         </div>
       </section>
 

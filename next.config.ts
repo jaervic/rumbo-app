@@ -64,6 +64,17 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // No anunciar el framework en una cabecera que ayuda a fingerprinting.
   poweredByHeader: false,
+  images: {
+    // Fotos de conductor servidas desde el Storage público de Supabase (P4). El comodín cubre el
+    // subdominio del proyecto de cada self-hoster.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
