@@ -39,7 +39,7 @@
  * el picker de la Fase 6.1, que no necesita filtrar por tipo).
  */
 
-import type { VehicleSelection, VehicleType } from "@/types";
+import type { VehicleType } from "@/types";
 
 /** Modelo concreto de una marca, ya resuelto (id y alias se generan desde la semilla). */
 export interface VehicleModel {
@@ -568,9 +568,6 @@ const BRAND_BY_ID: ReadonlyMap<string, VehicleBrand> = new Map(
 const MODEL_BY_ID: ReadonlyMap<string, VehicleModel> = new Map(
   VEHICLE_BRANDS.flatMap((brand) => brand.models.map((model) => [model.id, model] as const))
 );
-const BRAND_BY_MODEL_ID: ReadonlyMap<string, VehicleBrand> = new Map(
-  VEHICLE_BRANDS.flatMap((brand) => brand.models.map((model) => [model.id, brand] as const))
-);
 
 /** Modelos de una marca, en el orden de la tabla (prevalencia). [] si la marca no existe. */
 export function getVehicleModelsByBrand(brandId: string): VehicleModel[] {
@@ -601,37 +598,6 @@ export function getVehicleModelYears(
   }
   return years;
 }
-
-/**
- * Tipo de vehículo que implica una selección del catálogo: es lo que TARIFA el precio.
- *
- * Devuelve `null` si el modelo no existe o si no pertenece a esa marca (una selección manipulada no
- * debe colar un tipo distinto). El llamador conserva entonces el tipo que ya tenía, en lugar de
- * quedarse sin `vehicleType` y sin precio.
- */
-export function getVehicleTypeFromSelection(selection: VehicleSelection): VehicleType | null {
-  const model = MODEL_BY_ID.get(selection.modelId);
-  if (model === undefined) return null;
-
-  const brand = BRAND_BY_MODEL_ID.get(selection.modelId);
-  return brand !== undefined && brand.id === selection.brandId ? model.type : null;
-}
-
-/**
- * "Toyota Corolla 2015" a partir de la selección, o `null` si los ids no cuadran.
- *
- * El texto se compone aquí (y no en cada componente) para que el formulario, la tarjeta del precio y
- * la futura cotización guardada digan exactamente lo mismo. No usa `Intl`: el año es un número sin
- * separadores, así que no hay formato local que pueda romper la hidratación.
- */
-export function describeVehicle(selection: VehicleSelection): string | null {
-  const model = MODEL_BY_ID.get(selection.modelId);
-  const brand = BRAND_BY_MODEL_ID.get(selection.modelId);
-  if (model === undefined || brand === undefined || brand.id !== selection.brandId) return null;
-
-  return `${brand.name} ${model.name} ${selection.year}`;
-}
-
 
 /**
  * Nombres de las marcas que ofrecen modelos del tipo pedido (Fase 6.1a: filtro del selector).

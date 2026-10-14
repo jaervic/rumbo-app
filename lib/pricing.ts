@@ -31,18 +31,11 @@
  *    motor la ajusta con `getTrafficFactor` antes de tarificar el tiempo.
  * 2. Tráfico: franja horaria de Venezuela (pico AM/PM, mediodía, madrugada). Heurística estática:
  *    no hay API de tráfico en esta fase.
- * 3. Clima: `WEATHER_FACTOR` = 1 (no hay API de clima en esta fase; el gancho ya estaba previsto
- *    en lib/routing.ts).
- * 4. Nocturno: recargo sobre el subtotal cuando el viaje arranca de noche (22:00–06:00).
+ * 3. Nocturno: recargo sobre el subtotal cuando el viaje arranca de noche (22:00–06:00).
  *
- * Todo el cálculo tarifario de `estimatePrice` es puro y sin red (se puede probar y reutilizar
- * desde un Server Component); `calculatePrice` es la versión orquestada que resuelve la ruta.
- *
- * Quién usa qué (Fase 6, precio en vivo):
- * - La UI (app/page.tsx) llama a `estimatePrice` con la ruta que ya tiene de `useRoute`, dentro de
- *   un `useMemo`: cambiar de vehículo o de pasajeros recalcula el precio al instante y sin red.
- * - `calculatePrice` queda para cuando NO hay ruta previa (p. ej. desde un Route Handler en la
- *   Fase 7, o desde una cotización guardada). No se usa en la UI para no pedir dos veces la ruta.
+ * Todo el cálculo de `estimatePrice` es puro y sin red: recibe la ruta ya resuelta y devuelve el
+ * desglose. La UI (app/page.tsx) lo llama dentro de un `useMemo` con la ruta que tiene de `useRoute`:
+ * cambiar de vehículo o de pasajeros recalcula el precio al instante y sin red.
  *
  * Fase 6.2 (IMPLEMENTADO): las tarifas propias del conductor (Nivel 1: bandera, km, minuto y mínimo)
  * entran por `PricingInput.tariffOverride` (lib/driverProfile.ts) y pisan esos cuatro valores de la
@@ -50,11 +43,10 @@
  * cambia: la tarifa propia ajusta CUÁNTO se cobra por concepto, no cómo se modela el viaje.
  *
  * TODO (Fase 6.2): factor por ANTIGÜEDAD del vehículo. `QuoteRequest.vehicle` (marca, modelo y año;
- * catálogo en lib/vehicleCatalog.ts) ya llega hasta aquí, y el catálogo expone `getVehicleModelYears`
- * y `describeVehicle`, así que el factor se puede añadir sin tocar el formulario ni el flujo de
- * datos: `PricingInput` recibiría la selección, el factor se aplicaría al subtotal y PriceCard
- * añadiría su fila al desglose. NO se implementa todavía porque ningún dato dice cuánto pesa la
- * antigüedad: sin eso sería un número inventado moviendo el precio (ver la nota de calibración).
+ * catálogo en lib/vehicleCatalog.ts) ya llega hasta aquí, así que el factor se podría añadir sin
+ * tocar el formulario ni el flujo de datos: `PricingInput` recibiría el año, el factor se aplicaría
+ * al subtotal y PriceCard añadiría su fila al desglose. NO se implementa todavía porque ningún dato
+ * dice cuánto pesa la antigüedad: sin eso sería un número inventado moviendo el precio.
  *
  * TODO (Fase 9): instalar Vitest y convertir en suite permanente las comprobaciones que se hicieron
  * a mano para validar este motor (duración ajustada, viaje mínimo, recargo nocturno, rango ±12 %,
@@ -62,11 +54,10 @@
  */
 
 import { PASSENGER_CAPACITY } from "@/types";
-import type { Coords, QuoteRequest, QuoteResult, VehicleType } from "@/types";
+import type { QuoteResult, VehicleType } from "@/types";
 // Tipo solamente: el módulo del perfil toca localStorage y aquí NO se importa nada suyo en runtime
 // (el motor tiene que seguir siendo usable desde el servidor).
 import type { DriverTariffConfig } from "./driverProfile";
-import { getRoute, type RouteResult } from "./routing";
 
 /** Moneda de los precios calculados. Ver la nota de moneda en la cabecera del módulo. */
 export type QuoteCurrency = "USD";
@@ -245,15 +236,6 @@ const NIGHT_START_HOUR = 22;
 const NIGHT_END_HOUR = 6;
 
 /**
- * Factor de clima. Por ahora neutro: no se consulta ninguna API de clima. La implementación
- * original de lib/routing.ts ya dejaba este factor previsto para la Fase 5, pero integrar un
- * proveedor de clima arrastra decisiones propias (¿lluvia en origen, en destino o en toda la ruta?).
- * TODO (Fase 7+): Open-Meteo (gratis, sin API key) sobre el punto de origen y una hora de salida;
- * lluvia → ~1,2.
- */
-export const WEATHER_FACTOR = 1;
-
-/**
  * Amplitud del rango de precio (±12 %).
  *
  * El rango es deliberadamente amplio: cubre lo que puede variar el viaje real (una vía cerrada,
@@ -377,8 +359,6 @@ export interface PriceEstimate extends QuoteResult {
   durationAdjustedMin: number;
   /** Factor de tráfico aplicado a la duración (ver TRAFFIC_BANDS). */
   trafficFactor: number;
-  /** Factor de clima aplicado (hoy siempre WEATHER_FACTOR = 1). */
-  weatherFactor: number;
   /** Recargo nocturno aplicado al subtotal (1 = sin recargo). */
   nightSurchargeFactor: number;
   /** Bandera de bajada del vehículo. */
@@ -479,7 +459,7 @@ export function estimatePrice(input: PricingInput): PriceEstimate | null {
   // Suma de conceptos ANTES de factores y viaje mínimo: es la base del cálculo y la que debe
   // poder reconstruir la UI sumando las filas del desglose (conceptos + recargo nocturno).
   const concepts = roundMoney(baseFare + distanceFare + timeFare + passengerSurcharge);
-  const subtotal = roundMoney(concepts * nightSurchargeFactor * WEATHER_FACTOR);
+  const subtotal = roundMoney(concepts * nightSurchargeFactor);
   const nightSurcharge = roundMoney(subtotal - concepts);
   const minimumFare = roundMoney(tariff.minimumFare);
 
@@ -501,7 +481,6 @@ export function estimatePrice(input: PricingInput): PriceEstimate | null {
     durationIdealMin,
     durationAdjustedMin,
     trafficFactor,
-    weatherFactor: WEATHER_FACTOR,
     nightSurchargeFactor,
     baseFare,
     distanceFare,
@@ -514,71 +493,3 @@ export function estimatePrice(input: PricingInput): PriceEstimate | null {
     minimumFareApplied,
   };
 }
-
-/** Cómo resolver la ruta que alimenta el precio (ver `calculatePrice`). */
-export interface CalculatePriceOptions {
-  /** Coordenadas de origen ([lat, lng]). Obligatorias si no se pasa `route`. */
-  origin?: Coords | null;
-  /** Coordenadas de destino ([lat, lng]). Obligatorias si no se pasa `route`. */
-  destination?: Coords | null;
-  /**
-   * Ruta YA calculada (la que devuelve `useRoute` en app/page.tsx). Es la vía preferida: evita
-   * volver a llamar a OSRM cuando la ruta ya está en pantalla. Si falta, se pide con `getRoute`.
-   */
-  route?: RouteResult | null;
-  /** Momento de salida previsto (por defecto, ahora). Ver `PricingInput.departureAt`. */
-  departureAt?: Date;
-  /**
-   * Tarifas propias del conductor (Fase 6.2). Se reenvían tal cual a `estimatePrice`: sirve para
-   * cotizar desde fuera de la UI (Route Handler de la Fase 7) con la tarifa guardada del conductor.
-   */
-  tariffOverride?: DriverTariffConfig;
-  /** Cancelación de la petición de ruta (la usa el llamador cuando el usuario cambia de dirección). */
-  signal?: AbortSignal;
-}
-
-/**
- * Cotiza un viaje: resuelve la ruta (la recibida o una nueva de OSRM) y aplica el motor tarifario.
- *
- * Es la versión orquestada de `estimatePrice`. Se mantiene `async` porque la distancia por calle
- * NUNCA se puede estimar a partir de direcciones de texto: hace falta la ruta de OSRM. Sin
- * coordenadas ni ruta previa no hay precio, y devolver `null` es más honesto que inventar una
- * distancia en línea recta (un valor en línea recta se queda corto entre 20 % y 40 % en ciudad,
- * justo en el sentido que perjudica al conductor).
- *
- * `request.origin`/`request.destination` (el TEXTO que escribió el usuario) NO se usan a propósito:
- * las coordenadas ya se resolvieron en el autocompletado o tocando el mapa. Volver a geocodificar
- * aquí abriría la puerta a cotizar un punto distinto del que el usuario ve en el mapa.
- * TODO (Fase 7+): en el servidor, aceptar las direcciones como respaldo cuando el cliente no
- * consiga coordenadas (geocodificación con Photon en el Route Handler).
- *
- * @param request Cotización del formulario (vehículo y pasajeros son los datos que se tarifan).
- * @param options Ruta ya calculada o coordenadas para pedirla.
- * @returns Cotización con desglose, o `null` si no se pudo obtener la ruta o la combinación
- *   vehículo/pasajeros es imposible. Nunca lanza (ni `getRoute` ni `estimatePrice` lanzan).
- */
-export async function calculatePrice(
-  request: QuoteRequest,
-  options: CalculatePriceOptions = {}
-): Promise<PriceEstimate | null> {
-  const { route = null, origin = null, destination = null, departureAt, tariffOverride, signal } = options;
-
-  const resolvedRoute =
-    route ?? (origin !== null && destination !== null ? await getRoute(origin, destination, signal) : null);
-
-  if (resolvedRoute === null) return null;
-
-  return estimatePrice({
-    distanceKm: resolvedRoute.distanceKm,
-    durationIdealMin: resolvedRoute.durationMin,
-    vehicleType: request.vehicleType,
-    passengers: request.passengers,
-    departureAt,
-    tariffOverride,
-  });
-}
-
-
-
-
-

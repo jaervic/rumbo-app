@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** D5 (rendimiento, SEO y accesibilidad)
+**Última actualización:** P1 (limpieza: open source, sin suscripción, un solo selector de vehículo)
 
 ---
 
@@ -56,7 +56,8 @@ La app **funciona end-to-end y está deployada**.
 **Lo que NO hace todavía:**
 - Hay **login** (enlace mágico), **perfiles públicos y reseñas** (Fase 2) y esquema en Supabase. El
   perfil del conductor para COTIZAR sigue en `localStorage` (la migración a la nube se pospone).
-- No hay búsqueda por cercanía (Fase 3), ni fotos de perfil, ni suscripción activa.
+- No hay búsqueda por cercanía (Fase 3) ni fotos de perfil. Proyecto open source con donaciones (sin
+  suscripción).
 - No hay conversión a bolívares (solo USD).
 - No hay historial de carreras.
 - No hay rutas guardadas.
@@ -302,9 +303,9 @@ public/                   → assets estáticos
 - UI: `/login` + `components/LoginForm.tsx` (enlace mágico, sin contraseñas) y
   `/auth/callback/route.ts` (canje del código con guard anti *open redirect*). `AccountButton` en la
   cabecera muestra Entrar / correo + Salir.
-- Esquema `supabase/migrations/0001_init.sql`: `profiles`, `drivers`, `driver_tariffs`, `reviews`,
-  `plans`, `subscriptions`; **RLS en todas**; triggers de `updated_at`, alta de `profile` y recálculo
-  de `rating_avg`/`rating_count`. PostGIS (`location` geográfico) preparado para la Fase 3.
+- Esquema `supabase/migrations/0001_init.sql`: `profiles`, `drivers`, `driver_tariffs` y `reviews`
+  (`plans`/`subscriptions` se retiraron en P1); **RLS en todas**; triggers de `updated_at`, alta de
+  `profile` y recálculo de `rating_avg`/`rating_count`. PostGIS (`location`) preparado para la Fase 3.
 - Decisión: el `DriverProfile` **sigue en localStorage**; la migración a la nube se pospone.
 - Pendiente de esta fase (deuda): CSP con nonces cuando haya más superficie dinámica.
 
@@ -349,6 +350,15 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P1 — Limpieza y deuda técnica ✅
+- **Open source, sin suscripción**: se retira el modelo de suscripción con `0002_drop_subscriptions.sql`
+  (drop de `plans`/`subscriptions` y del enum) y se limpian `types/database.ts` y la doc.
+- `lib/pricing.ts`: **eliminado `calculatePrice`** (código muerto) y **`WEATHER_FACTOR` fuera de la
+  fórmula** (el clima no está integrado; era un factor 1 que ensuciaba el desglose).
+- **Un solo selector de vehículo**: se elimina `VehicleCatalogPicker` y el tipo `VehicleSelection`;
+  `VehicleSelector` se usa en cotizador y perfil, y `QuoteRequest.vehicle` pasa a ser `Vehicle | null`.
+- `components/ui/*` importan `cn` de `@/lib/utils` (antes del paquete `"cn"`); SVGs por defecto borrados.
 
 ### D5 — Rendimiento, SEO y accesibilidad ✅
 - `app/robots.ts` y `app/sitemap.ts` (perfiles visibles vía `lib/supabase/public.ts`, cliente anónimo
@@ -455,13 +465,13 @@ usuarios reales y se justifique.
 
 ## 8. Roadmap: qué sigue y por qué
 
-> **Decisión de producto (Fase 0): ampliar a marketplace, con la suscripción EN PAUSA.**
-> Se acordó evolucionar de cotizador a marketplace de dos lados en fases: (1) **Supabase + auth**,
-> (2) **perfiles públicos y reseñas** para los clientes, (3) **conductores cercanos** (PostGIS) y
-> (4) **esquema de suscripción** con aprobación manual (Pago Móvil/Zelle/Binance), abstracto y sin
-> pasarela real. **No se cobra todavía**: el cotizador sigue gratis y la suscripción no se activa
-> hasta validar el MVP actual con conductores reales. Esto matiza —no contradice— el "no cobrar hasta
-> tener 100 usuarios" de más abajo: primero validar, después monetizar.
+> **Decisión de producto (P1): open source con donaciones, SIN suscripción.**
+> El proyecto pasa a ser **open source (licencia MIT)** sostenido por **donaciones voluntarias**
+> (GitHub Sponsors, Open Collective, Ko-fi y cripto). Se **descarta el modelo de suscripción** (no hay
+> empresa para operar pagos): se eliminan `plans`/`subscriptions` (`0002_drop_subscriptions.sql`).
+> La confianza entre usuarios se apoya en **reputación y moderación**, **no** en KYC pesado (no se
+> recogen documentos de identidad). El roadmap de features (perfiles públicos, cercanía, fotos) sigue
+> vigente; lo que cambia es el modelo de ingresos.
 
 ### Prioridad ALTA (después de validar con conductores)
 

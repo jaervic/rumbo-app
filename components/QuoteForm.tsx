@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import VehicleCatalogPicker from "@/components/VehicleCatalogPicker";
+import VehicleSelector from "@/components/VehicleSelector";
 import { cn } from "@/lib/utils";
 import {
   autocompleteAddress,
@@ -22,8 +22,7 @@ import {
   GeocodeResult,
 } from "@/lib/geocoding";
 import { formatVehicleType, VEHICLE_LABELS, VEHICLE_TYPES } from "@/lib/pricing";
-import { describeVehicle, getVehicleTypeFromSelection } from "@/lib/vehicleCatalog";
-import { Coords, MapSelectionMode, PASSENGER_CAPACITY, QuoteCoords, QuoteRequest, VehicleSelection, VehicleType } from "@/types";
+import { Coords, MapSelectionMode, PASSENGER_CAPACITY, QuoteCoords, QuoteRequest, VehicleType } from "@/types";
 import type { Vehicle } from "@/types/vehicle";
 import { useUserLocation, type UserLocation } from "@/hooks/useUserLocation";
 
@@ -481,13 +480,9 @@ export default function QuoteForm({
     destination: "",
     passengers: 1,
     vehicleType: "sedan",
-    // Fase 6.1: vehículo del catálogo (null = sin elegir, o "Otra marca"). Ver handleVehicleChange.
+    // Vehículo concreto del catálogo (marca + modelo + año), o null si no se especificó.
     vehicle: null,
   });
-
-  // Fase 6.1: con un vehículo del catálogo elegido, el tipo viene del MODELO (dato derivado), así
-  // que el select de tipo se deshabilita en lugar de dejar que lo contradiga. Ver el propio select.
-  const hasCatalogVehicle = formData.vehicle !== null;
 
   /**
    * Bloque "Especificar modelo del vehículo" (Fase 8.1) desplegado. Arranca CERRADO: el formulario ya
@@ -497,12 +492,13 @@ export default function QuoteForm({
   const [isVehicleDetailsOpen, setIsVehicleDetailsOpen] = useState(false);
 
   /**
-   * Resumen del vehículo del catálogo para el título colapsado ("Toyota Corolla 2015"). Sale de
-   * `describeVehicle` —la misma descripción que usa PriceCard—, así que no puede divergir de lo que se
-   * tarifa. `null` = todavía no hay vehículo del catálogo elegido.
+   * Resumen del vehículo elegido para el título colapsado ("Toyota Corolla 2015"). `null` = todavía no
+   * hay vehículo concreto.
    */
-  const catalogVehicleLabel =
-    formData.vehicle === null ? null : describeVehicle(formData.vehicle);
+  const selectedVehicleLabel =
+    formData.vehicle === null
+      ? null
+      : `${formData.vehicle.brand} ${formData.vehicle.model} ${formData.vehicle.year}`;
 
   /**
    * Fase 6.2: el tipo de vehículo puede venir del perfil del conductor (`defaultVehicleType`) como
@@ -554,8 +550,8 @@ export default function QuoteForm({
    * (`estimatePrice` devolvería `null` y la tarjeta diría "Esta combinación no es posible" sin decir
    * qué tocar).
    *
-   * Lo usan los DOS caminos que cambian el vehículo —el select de tipo y el catálogo, que deduce el
-   * tipo del modelo— para que el ajuste no se olvide en ninguno.
+   * Lo llama el select de tipo de vehículo. Limpia además el vehículo concreto: sus marcas y modelos
+   * son de otro tipo, así que la ficha y el tipo no pueden quedar contradiciéndose.
    */
   const applyVehicleType = (nextType: VehicleType) => {
     // El usuario eligió: su elección manda sobre el tipo que viniera del perfil (Fase 6.2).
@@ -568,6 +564,8 @@ export default function QuoteForm({
     setFormData((current) => ({
       ...current,
       vehicleType: nextType,
+      // El vehículo concreto deja de valer: se elige de nuevo con el catálogo del tipo nuevo.
+      vehicle: null,
       // Nunca por debajo de 1 (el mínimo del campo) ni por encima de la capacidad del vehículo.
       passengers: Math.min(Math.max(1, current.passengers), nextMax),
     }));
@@ -671,30 +669,14 @@ export default function QuoteForm({
   };
 
   /**
-   * Catálogo de vehículos (Fase 6.1): la marca, el modelo y el año se guardan en `formData.vehicle`
-   * y el TIPO se deduce del modelo (una sola fuente de verdad: la tabla del catálogo). Así la ficha
-   * del vehículo y lo que tarifa el precio no pueden contradecirse.
+   * Vehículo concreto del catálogo (Fase 6.1 / consolidado en P1): la marca, el modelo y el año se
+   * guardan en `formData.vehicle`. El tipo lo fija `vehicleType`, que es el filtro con el que
+   * `VehicleSelector` ofrece marcas y modelos, así que la ficha y el precio no pueden contradecirse.
    *
-   * `null` = "Otra marca / no está en la lista": se limpia la selección y el tipo se queda como
-   * esté, porque entonces vuelve a mandar el select manual de vehículo.
-   *
-   * El TIPO lo deduce el modelo del catálogo; los pasajeros se ajustan con `applyVehicleType`, que es
-   * el mismo camino que usa el select de tipo: la regla de capacidad vive en un solo sitio.
+   * `null` = sin vehículo concreto: se limpia la selección y el precio se calcula solo por el tipo.
    */
-  const handleVehicleChange = (selection: VehicleSelection | null) => {
-    if (selection === null) {
-      // "Otra marca / no está en la lista": el vehículo sale del catálogo y el tipo se queda como
-      // está (vuelve a mandar el select manual). Los pasajeros no cambian.
-      setFormData((current) => ({ ...current, vehicle: null }));
-      return;
-    }
-
+  const handleVehicleChange = (selection: Vehicle | null) => {
     setFormData((current) => ({ ...current, vehicle: selection }));
-
-    // El tipo lo define el modelo (dato derivado) y se aplica con `applyVehicleType` para que el
-    // límite de pasajeros valga también por este camino. Si el modelo no estuviera en el catálogo (no
-    // debería ocurrir) se conserva el tipo actual: el precio nunca se queda sin un `vehicleType`.
-    applyVehicleType(getVehicleTypeFromSelection(selection) ?? vehicleType);
   };
 
   const handleDestinationSelect = (coords: Coords) => {
@@ -923,12 +905,12 @@ export default function QuoteForm({
               // seleccionado si el Root recibe el mapa valor → etiqueta. Sin esta prop renderiza el
               // valor CRUDO y el trigger mostraba "sedan" en minúsculas en lugar de "Sedán".
               items={VEHICLE_LABELS}
-              disabled={hasCatalogVehicle}
               onValueChange={(value) => {
                 // El Select puede emitir null (ej: al limpiarse), solo actualizamos con un valor válido
                 if (value) {
-                  // Cambiar el tipo pasa por `applyVehicleType`: no solo lo fija, también ajusta los
-                  // pasajeros a la capacidad del nuevo vehículo (Fase 5.3).
+                  // Cambiar el tipo pasa por `applyVehicleType`: lo fija, ajusta los pasajeros a la
+                  // capacidad del nuevo vehículo y limpia el vehículo concreto (sus marcas/modelos son
+                  // de otro tipo).
                   applyVehicleType(value);
                 }
               }}
@@ -936,11 +918,7 @@ export default function QuoteForm({
               {/* w-full + min-h-11: el trigger de shadcn es w-fit/h-8, demasiado
                   pequeño para tocar con el dedo. text-base evita el zoom automático
                   de iOS al enfocar (un control de <16px hace que Safari haga zoom). */}
-              <SelectTrigger
-                id="vehicle"
-                className="w-full min-h-11 text-base md:min-h-0 md:text-sm"
-                aria-describedby={hasCatalogVehicle ? "vehicle-catalog-hint" : undefined}
-              >
+              <SelectTrigger id="vehicle" className="w-full min-h-11 text-base md:min-h-0 md:text-sm">
                 <SelectValue placeholder="Tipo de vehículo" />
               </SelectTrigger>
               <SelectContent
@@ -961,16 +939,6 @@ export default function QuoteForm({
                 ))}
               </SelectContent>
             </Select>
-
-            {/* El tipo no se puede cambiar aquí mientras haya un vehículo del catálogo: no es un
-                control roto, es información derivada del modelo. El aviso lo explica y da la salida
-                (el aria-describedby del trigger apunta a este id). */}
-            {hasCatalogVehicle && (
-              <p id="vehicle-catalog-hint" className="text-xs text-muted-foreground">
-                Lo define el modelo del catálogo. Para elegir otro tipo, usa &quot;Otra marca / no está
-                en la lista&quot; en Marca.
-              </p>
-            )}
           </div>
         </div>
       </div>
@@ -1021,7 +989,7 @@ export default function QuoteForm({
       >
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
           <span className="min-w-0 truncate">
-            {catalogVehicleLabel ?? "Especificar modelo del vehículo (opcional)"}
+            {selectedVehicleLabel ?? "Especificar modelo del vehículo (opcional)"}
           </span>
           <ChevronDown
             className={cn(
@@ -1033,7 +1001,11 @@ export default function QuoteForm({
         </summary>
 
         <div className="border-t border-border p-3">
-          <VehicleCatalogPicker value={formData.vehicle} onChange={handleVehicleChange} />
+          <VehicleSelector
+            value={formData.vehicle}
+            onChange={handleVehicleChange}
+            vehicleType={vehicleType}
+          />
         </div>
       </details>
 

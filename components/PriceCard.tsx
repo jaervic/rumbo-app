@@ -25,7 +25,6 @@
 import type { Ref } from "react";
 import { ChevronDown, Clock, Loader2, Ruler, TriangleAlert, Users, Wallet } from "lucide-react";
 import { formatVehicleType, type PriceEstimate } from "@/lib/pricing";
-import { describeVehicle } from "@/lib/vehicleCatalog";
 import type { RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 import type { QuoteRequest } from "@/types";
@@ -88,10 +87,9 @@ function formatFactor(factor: number): string {
 /**
  * Nombre del vehículo para el contexto del viaje.
  *
- * Con catálogo (Fase 6.1) se muestra el vehículo real con su categoría entre paréntesis —
+ * Con vehículo concreto se muestra la ficha real con su categoría entre paréntesis —
  * "Toyota Corolla 2015 (Sedán)" — porque la categoría es la que explica el precio y no debe quedar
- * implícita. Sin catálogo, o con un id que ya no exista (dato viejo o manipulado), se cae a la
- * categoría sola, que es como se mostraba antes de esta fase.
+ * implícita. Sin vehículo concreto se muestra solo la categoría.
  */
 function getVehicleLabel(request: QuoteRequest): string {
   // Fase 8.1: la etiqueta sale de `formatVehicleType` ("sedan" → "Sedán"). El valor que tarifa el
@@ -100,8 +98,7 @@ function getVehicleLabel(request: QuoteRequest): string {
   const { vehicle } = request;
   if (vehicle === null) return category;
 
-  const description = describeVehicle(vehicle);
-  return description === null ? category : `${description} (${category})`;
+  return `${vehicle.brand} ${vehicle.model} ${vehicle.year} (${category})`;
 }
 
 /** Redondeo a céntimos para las diferencias que se muestran (evita 0,21999999999999997). */

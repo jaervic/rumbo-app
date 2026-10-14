@@ -19,8 +19,6 @@ export type Json =
 
 /** Rol del usuario en la plataforma. */
 export type UserRole = "driver" | "customer";
-/** Estado de la suscripción del conductor (Fase 4). */
-export type SubscriptionStatus = "inactive" | "pending" | "active" | "expired";
 /** Tipo de vehículo en la base de datos (espejo de `VehicleType` de la app). */
 export type DbVehicleType = "moto" | "sedan" | "suv" | "van";
 
@@ -203,93 +201,11 @@ export interface Database {
           },
         ];
       };
-      plans: {
-        Row: {
-          id: string;
-          name: string;
-          price_usd: number;
-          interval: string;
-          features: Json;
-          is_active: boolean;
-          created_at: string;
-        };
-        Insert: {
-          id: string;
-          name: string;
-          price_usd: number;
-          interval?: string;
-          features?: Json;
-          is_active?: boolean;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          name?: string;
-          price_usd?: number;
-          interval?: string;
-          features?: Json;
-          is_active?: boolean;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-      subscriptions: {
-        Row: {
-          id: string;
-          driver_id: string;
-          plan_id: string | null;
-          status: SubscriptionStatus;
-          provider: string;
-          provider_ref: string | null;
-          current_period_end: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          driver_id: string;
-          plan_id?: string | null;
-          status?: SubscriptionStatus;
-          provider?: string;
-          provider_ref?: string | null;
-          current_period_end?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          driver_id?: string;
-          plan_id?: string | null;
-          status?: SubscriptionStatus;
-          provider?: string;
-          provider_ref?: string | null;
-          current_period_end?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "subscriptions_driver_id_fkey";
-            columns: ["driver_id"];
-            isOneToOne: true;
-            referencedRelation: "drivers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "subscriptions_plan_id_fkey";
-            columns: ["plan_id"];
-            isOneToOne: false;
-            referencedRelation: "plans";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
       user_role: UserRole;
-      subscription_status: SubscriptionStatus;
       vehicle_type: DbVehicleType;
     };
     CompositeTypes: Record<string, never>;
@@ -301,5 +217,3 @@ export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Driver = Database["public"]["Tables"]["drivers"]["Row"];
 export type DriverTariff = Database["public"]["Tables"]["driver_tariffs"]["Row"];
 export type Review = Database["public"]["Tables"]["reviews"]["Row"];
-export type Plan = Database["public"]["Tables"]["plans"]["Row"];
-export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];

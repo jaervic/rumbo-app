@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Selector de vehículo (Fase 6.1a): marca → modelo → año, FILTRADO por el tipo de vehículo activo.
+ * Selector de vehículo (único desde P1): marca → modelo → año, FILTRADO por el tipo de vehículo activo.
  *
- * ¿Qué lo diferencia de `components/VehicleCatalogPicker.tsx` (Fase 6.1)? El picker muestra el catálogo
- * completo y DEDUCE el tipo del modelo elegido; este selector parte del tipo activo y filtra: con
- * "moto" solo aparecen marcas de moto (`getBrandsByVehicleType`). Este es el selector del PERFIL DEL
- * CONDUCTOR (Fase 6.2): en el QuoteForm sigue el picker, que no necesita filtrar por tipo.
+ * Se usa tanto en el cotizador (QuoteForm) como en el perfil del conductor (DriverProfilePanel y
+ * DriverProfileForm). Parte del tipo activo y filtra el catálogo: con "moto" solo aparecen marcas de
+ * moto (`getBrandsByVehicleType`). El tipo NO se deduce del modelo; lo fija quien lo usa, así que la
+ * ficha del vehículo y el precio nunca se contradicen.
  *
  * El BORRADOR (marca → modelo → año) es de este componente y el padre solo recibe vehículos COMPLETOS
  * (`null` mientras falte algo). El borrador se guarda con el tipo con el que se creó, así que al
@@ -16,8 +16,6 @@
  * Mobile-first: una columna en el móvil y dos desde `sm`, con la marca en la fila completa. Triggers e
  * inputs con min-h-11 y text-base, igual que el resto del formulario (dedo y sin zoom en iOS).
  *
- * TODO (Fase 6.2): usar VehicleSelector en el perfil del conductor.
- * TODO (Fase 6.2): persistir Vehicle en localStorage.
  * TODO (Fase 7): enviar brands/models personalizados a Supabase con flags.
  * TODO (Fase 6.2+): factor de precio por antigüedad o gama, con datos reales. Mirar la gama del
  * modelo (económico / estándar / premium) contra los viajes reales.

@@ -39,27 +39,26 @@ En la raíz: `package.json` (scripts), `.env.local.example` (plantilla de variab
 
 ## Motor de precios (Fase 5)
 
-Todo el cálculo vive en `lib/pricing.ts` y tiene dos capas:
+Todo el cálculo vive en `lib/pricing.ts`, en una única función pura:
 
 - **`estimatePrice(input)`** — cálculo puro y sin red: recibe distancia (km), duración ideal (min),
   vehículo y pasajeros, y devuelve un `PriceEstimate` con el desglose completo, o `null` si la
-  combinación no permite un precio honesto (p. ej. 2 pasajeros en una moto).
-- **`calculatePrice(request, options)`** — capa orquestada: usa la ruta ya calculada (la de
-  `useRoute`) o la pide a OSRM con las coordenadas, y luego aplica `estimatePrice`.
+  combinación no permite un precio honesto (p. ej. 2 pasajeros en una moto). La ruta la resuelve
+  `useRoute` (OSRM) en la UI y se le pasa ya calculada.
 
 ### Fórmula
 
 ```text
 minAjustados = duraciónIdealOSRM × factorTráfico(hora de Venezuela)   (mínimo 1 min)
 bruto        = bandera + (km × tarifaKm) + (minAjustados × tarifaMin) + recargoPasajeros
-bruto       *= recargoNocturno × factorClima
+bruto       *= recargoNocturno
 medio        = max(bruto, viajeMínimo del vehículo)
 rango        = medio × (1 ± 12 %)        priceMin nunca baja del viaje mínimo
 ```
 
 Y desde la Fase 6.2, si el conductor tiene perfil con tarifas propias (`PricingInput.tariffOverride`),
 esos cuatro importes (bandera, km, minuto y mínimo) SUSTITUYEN a los de la tabla del vehículo. Lo demás
-—recargo por pasajero, capacidad y factores de tráfico, nocturno, clima y ±12 %— no cambia.
+—recargo por pasajero, capacidad y factores de tráfico, nocturno y ±12 %— no cambia.
 
 ### Factores y constantes
 
@@ -68,7 +67,6 @@ esos cuatro importes (bandera, km, minuto y mínimo) SUSTITUYEN a los de la tabl
 | `VEHICLE_TARIFFS` | bandera + tarifa/km + tarifa/min + recargo por pasajero + viaje mínimo + capacidad (leída de `PASSENGER_CAPACITY`), **por tipo de vehículo** | Cada vehículo tiene su estructura de coste; una tabla se ajusta sin tocar la fórmula |
 | `TRAFFIC_BANDS` (vía `getTrafficFactor`) | pico AM/PM 1,35 · mediodía 1,20 · madrugada 0,85 | OSRM da la duración *ideal* (sin tráfico); esta heurística la corrige por franja horaria |
 | `NIGHT_SURCHARGE_FACTOR` | 1,15 (22:00–06:00) | Menos oferta y más riesgo de noche; cambia el PRECIO, no los minutos |
-| `WEATHER_FACTOR` | 1 | Sin API de clima todavía; el gancho queda explícito |
 | `PRICE_SPREAD` | ±12 % | Rango para negociar en lugar de un "precio exacto" que se lee como contrato |
 
 La hora se resuelve con `Intl.DateTimeFormat` en `America/Caracas` (`getVenezuelaHour`), no con la
@@ -116,26 +114,26 @@ QuoteForm --onRequestChange(QuoteRequest)--> app/page.tsx
 - El botón "Ver precio estimado" no calcula: desplaza la vista y el foco a la tarjeta (en móvil queda
   debajo del mapa). Antes de la Fase 6 el formulario solo escribía el envío en la consola.
 
-### Catálogo de vehículos (Fase 6.1)
+### Catálogo de vehículos (consolidado en P1)
 
 `lib/vehicleCatalog.ts` es la tabla local de marca + modelo + año (sin red y sin API key), siguiendo
 el patrón de `lib/popularPlaces.ts`: semilla compacta, ids estables (`toyota-corolla`) y funciones
-puras. El selector es `components/VehicleCatalogPicker.tsx` (cascada marca → modelo → año).
+puras. Hay **un solo selector**, `components/VehicleSelector.tsx` (cascada marca → modelo → año),
+usado tanto en el cotizador como en el perfil del conductor.
 
 ```text
-QuoteForm (VehicleCatalogPicker)
+QuoteForm / DriverProfile* (VehicleSelector)
         |
-        | getVehicleTypeFromSelection(selección)   <- el TIPO se deduce del modelo
+        | marca → modelo → año, filtrado por el vehicleType activo
         v
-QuoteRequest { ..., vehicleType, vehicle: { brandId, modelId, year } | null }
+QuoteRequest { ..., vehicleType, vehicle: { brand, model, year, vehicleType } | null }
 ```
 
-- **El tipo de vehículo se deduce del modelo**: la ficha del vehículo y lo que tarifa el precio no
-  pueden contradecirse. Elegir un modelo fija el año más nuevo disponible (dos toques bastan).
-- **"Otra marca / no está en la lista"** sale del catálogo y devuelve el control al select manual de
-  tipo. Mientras haya un vehículo del catálogo elegido, ese select se **deshabilita** (el tipo es un
-  dato derivado del modelo) y el aviso que va justo debajo explica la salida: así el vehículo que se
-  describe y el que se tarifa no pueden contradecirse.
+- **El tipo de vehículo lo fija `vehicleType`** (el selector filtra el catálogo por él), así que la
+  ficha del vehículo y lo que tarifa el precio no pueden contradecirse. Elegir un modelo fija el año
+  más nuevo disponible (dos toques bastan). Marca y modelo son **texto** y admiten "Otro" (texto libre).
+- **Cambiar el tipo** reinicia la selección de vehículo (sus marcas/modelos son de otro tipo): el reset
+  es derivado en el render, sin `useEffect`.
 - **El año no cambia el precio todavía** (`estimatePrice` sigue tarifando por tipo y pasajeros). El
   factor por antigüedad queda apuntado en el `TODO (Fase 6.2)` de `lib/pricing.ts`: el dato ya viaja
   en `QuoteRequest.vehicle`, así que no hará falta tocar el formulario.
@@ -163,17 +161,18 @@ isKnownBrand · isKnownModel · isBrandAvailableForType
 
 - `types/vehicle.ts` define `Vehicle { brand, model, year, vehicleType }`: marca y modelo son TEXTO
   (admiten "Otro") y el tipo viaja dentro del vehículo para no depender del formulario.
-- `components/VehicleSelector.tsx` (Fase 6.1a) es el selector con filtro marca → modelo → año. El
-  borrador se guarda con el tipo con el que se creó, así que **cambiar de sedán a moto resetea marca y
-  modelo sin `useEffect`** (reset derivado en el render) y con "Otro" aparece un campo de texto libre.
+- `components/VehicleSelector.tsx` es el **único** selector (marca → modelo → año), con filtro por
+  tipo. El borrador se guarda con el tipo con el que se creó, así que **cambiar de sedán a moto
+  resetea marca y modelo sin `useEffect`** (reset derivado en el render) y con "Otro" aparece un campo
+  de texto libre.
 - Catálogo ampliado con el parque antiguo (80/90/2000): Starlet, Tercel, Chevette, Caprice, Corsa,
   Escort, Galant, Sunny, Almera, Clio, 323… y camionetas como Blazer, Bronco, F-100, Patrol, Nativa,
   Samurai, más las series FJ del Land Cruiser y el **Autana** (el 4Runner venezolano). Marcas que se
   suman: **Peugeot, Daewoo, Dodge** (autos) y **Voge, Vento** (motos, todavía sin modelos cargados).
   De la Fase 6.1: Keeway, Skygo, AKT, motos extra y autos extra; **"Haojue" → "MD"**, y `getYears()`
   arranca en **1980** porque en Venezuela se cotizan carros de esa época.
-- `VehicleSelector` se monta en el **panel del conductor** (Fase 6.2), filtrando marcas por el tipo
-  elegido. El QuoteForm sigue con `VehicleCatalogPicker` (Fase 6.1), que no filtra por tipo.
+- `VehicleSelector` se monta en el cotizador y en el **panel del conductor** (Fase 6.2), filtrando
+  marcas por el tipo elegido. (Antes había dos selectores; P1 los consolidó en uno.)
 - ⚠️ `CURRENT_YEAR = new Date().getFullYear()` se evalúa al importar el módulo y la página se
   prerenderiza: la lista de años queda congelada en la fecha del build (solo puede dar aviso de
   hidratación en el salto de año).
@@ -240,10 +239,9 @@ Detectado al probar la URL de producción en un celular real:
 
 ### Pendiente
 
-- Convertir el precio a bolívares con la tasa BCV del día (Fase 7).
-- Fase 7: sincronizar el `DriverProfile` con Supabase cuando haya login, permitir varios vehículos por
-  conductor y mandar las marcas/modelos personalizados con `is_custom_brand` / `is_custom_model`.
-  Fase 8: comparar la tarifa del conductor con el promedio de la app. Nivel 2: factores avanzados.
+- Convertir el precio a bolívares con la tasa BCV **y** la de Binance (P9 del plan).
+- Sincronizar el `DriverProfile` con Supabase, permitir varios vehículos por conductor y mandar las
+  marcas/modelos personalizados con `is_custom_brand` / `is_custom_model`. Nivel 2: factores avanzados.
 - Factor por antigüedad del vehículo (Fase 6.2) y revisión del catálogo: años por generación y las
   marcas de moto que faltan (Vento, Ryan, Motomel...).
 - Calibrar `VEHICLE_TARIFFS` y `TRAFFIC_BANDS` con viajes reales cuando exista Supabase.
@@ -405,12 +403,13 @@ Auth por **enlace mágico** (sin contraseñas): `/login` pide el correo, Supabas
 `/auth/callback` lo canjea por una sesión (con protección contra *open redirect* en el parámetro
 `next`). El proxy `proxy.ts` refresca la sesión en cada navegación.
 
-El esquema vive en `supabase/migrations/0001_init.sql` y se aplica en el **SQL Editor** de Supabase
-(o con el CLI). Crea `profiles`, `drivers`, `driver_tariffs`, `reviews`, `plans` y `subscriptions`
-con **RLS activada en todas** (deny by default): cada usuario escribe lo suyo y solo se lee
+El esquema vive en `supabase/migrations/` (`0001_init.sql` y siguientes) y se aplica con el **CLI de
+Supabase** (`supabase db push`) o en el **SQL Editor**. Crea `profiles`, `drivers`, `driver_tariffs` y
+`reviews` con **RLS activada en todas** (deny by default): cada usuario escribe lo suyo y solo se lee
 públicamente lo que un conductor marca como visible. La ubicación exacta del conductor no se expone
 por SELECT; se leerá vía RPC aproximada (Fase 3). Un trigger crea el `profile` al registrarse y otro
-recalcula `rating_avg`/`rating_count` tras cada reseña.
+recalcula `rating_avg`/`rating_count` tras cada reseña. El modelo de suscripción (`plans`/
+`subscriptions`) se retiró en `0002_drop_subscriptions.sql`: el proyecto es open source con donaciones.
 
 El perfil del conductor **sigue en `localStorage`** por ahora; la migración a la nube llega en una
 fase posterior.
@@ -462,4 +461,12 @@ A partir de ahí el **deploy es automático**:
 - El linter no bloquea el build (Next 16 no lo ejecuta): córrelo a mano antes del push.
 - Las tarifas de `VEHICLE_TARIFFS` y las franjas de `TRAFFIC_BANDS` siguen siendo heurísticas sin datos
   reales de viajes; publicar en Vercel no las valida.
+
+## Licencia y proyecto open source
+
+Rumbo es **open source bajo licencia MIT** (ver `LICENSE`): puedes usarlo, modificarlo y desplegarlo
+libremente. El proyecto **no cobra suscripciones**; se sostiene con **donaciones voluntarias** (los
+enlaces se publican en la sección de donaciones, sin datos personales). Para
+desplegar tu propia instancia necesitas tu propio proyecto de Supabase y tus variables de entorno
+(ver *Variables de entorno*).
 

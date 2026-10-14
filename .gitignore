@@ -46,3 +46,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Proyecto ajeno colocado dentro de la carpeta (no versionar)
+openlens-qr/
