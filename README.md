@@ -333,9 +333,11 @@ APIs públicas sin clave, así que la app arranca sin `.env.local`.
 | `npm run build` | Build de producción en `.next/`, con chequeo de tipos de TypeScript |
 | `npm run start` | Sirve la build de producción (requiere `npm run build` antes) |
 | `npm run lint` | ESLint 9 (flat config de `eslint-config-next`) |
-| `npm run typecheck` | `tsc --noEmit` (requiere haber corrido `next build` al menos una vez para los tipos globales de Next) |
+| `npm run typecheck` | `next typegen && tsc --noEmit` (genera los tipos de rutas de Next antes de comprobar) |
 | `npm run test` | Vitest en modo `run` (una pasada) sobre la suite del motor de precios |
 | `npm run test:watch` | Vitest en modo vigilancia durante el desarrollo |
+| `npm run db:push` | Aplica las migraciones al proyecto de Supabase enlazado (Supabase CLI) |
+| `npm run db:types` | Regenera `types/database.ts` desde el esquema (`supabase gen types`) |
 
 > En Next.js 16 `next build` **ya no ejecuta ESLint**: los avisos del linter solo se ven con
 > `npm run lint`, y el build de Vercel tampoco los mira. Si quieres que sean bloqueantes, cambia el
@@ -361,6 +363,20 @@ bundle de runtime** y aún no tiene versión corregida.
 **Pruebas**: `lib/pricing.test.ts` cubre el motor de precios (duración ajustada, viaje mínimo, recargo
 nocturno, rango ±12 %, desglose que suma exacto, tarifas propias, casos `null` y el guard de tipos).
 Se ejecutan con `npm run test` (Vitest, entorno `node`).
+
+## CI y Supabase CLI (P2)
+
+**Integración continua**: `.github/workflows/ci.yml` corre en cada push a `main` y cada Pull Request
+`npm ci → typecheck → lint → test → build`. No necesita secretos: sin variables de Supabase la app
+degrada sola (build y sitemap están protegidos con `isSupabaseConfigured`), así que funciona también
+en un fork.
+
+**Migraciones versionadas**: el esquema vive en `supabase/migrations/` y se aplica con el CLI:
+`npx supabase link --project-ref <ref>` (una vez) y luego `npm run db:push`. `supabase/config.toml`
+está versionado; `supabase/.temp/` (que contiene el ref enlazado) queda ignorado.
+
+**Tipos generados**: `npm run db:types` regenera `types/database.ts` desde el esquema real. Úsalo
+después de cada migración en vez de editar el archivo a mano.
 
 ## Build y start en producción
 

@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P1 (limpieza: open source, sin suscripción, un solo selector de vehículo)
+**Última actualización:** P2 (CI y Supabase CLI)
 
 ---
 
@@ -350,6 +350,14 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P2 — CI y Supabase CLI ✅
+- `.github/workflows/ci.yml`: en cada push a `main` y PR corre `npm ci → typecheck → lint → test →
+  build`. Sin secretos (degrada sin Supabase).
+- `package.json`: `typecheck` ahora hace `next typegen && tsc --noEmit` (los tipos de rutas los genera
+  Next; sin ellos tsc falla en un clon limpio). Scripts `db:push` y `db:types` con `npx supabase`.
+- `supabase/config.toml` versionado (generado con `supabase init`); `supabase/.temp/` ignorado.
+  Flujo: `npx supabase link --project-ref <ref>` → `npm run db:push`; tipos con `npm run db:types`.
 
 ### P1 — Limpieza y deuda técnica ✅
 - **Open source, sin suscripción**: se retira el modelo de suscripción con `0002_drop_subscriptions.sql`

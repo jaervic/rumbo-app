@@ -1,0 +1,45 @@
+# Integración continua (P2): verifica cada push a main y cada Pull Request.
+#
+# No necesita secretos: sin variables de Supabase la app degrada sola (el build y el
+# sitemap están protegidos con `isSupabaseConfigured`), así que el pipeline corre en
+# un fork sin configurar nada.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela ejecuciones viejas del mismo ref si se vuelve a empujar.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # `typecheck` corre `next typegen` antes de tsc (los tipos de LayoutProps/PageProps los
+      # genera Next; sin ellos tsc falla en un entorno recién clonado).
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas
+        run: npm run test
+
+      - name: Build
+        run: npm run build
