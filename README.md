@@ -292,7 +292,19 @@ La marca es **Rumbo**. El sistema visual vive en `app/globals.css`:
 - `DriverCard` con avatar de iniciales y jerarquía mejorada; páginas sin doble scroll (se sustituyó
   `min-h-dvh` por `flex-1` bajo el header).
 
-Pendiente (D4–D5): logo/iconos/manifest/OG y auditoría de rendimiento/accesibilidad.
+### Marca y app móvil (D4)
+
+- **Logo** (`components/Logo.tsx`): un pin de mapa —el mismo símbolo del destino en el cotizador—
+  sobre insignia del color de marca, usando tokens (se adapta a claro/oscuro). Es el mismo símbolo del
+  favicon y los iconos.
+- **Iconos**: `app/icon.svg` (favicon), `app/apple-icon.png` y PNGs en `public/` (192, 512 y
+  *maskable*) generados con `sharp` desde la marca.
+- **Manifest PWA** (`app/manifest.ts`): permite "Añadir a inicio", `display: standalone` y
+  `theme_color`.
+- **Open Graph** (`app/opengraph-image.tsx`, con `ImageResponse`): imagen de 1200×630 para compartir
+  enlaces. `metadataBase` se toma de `NEXT_PUBLIC_SITE_URL`.
+
+Pendiente (D5): auditoría de rendimiento y accesibilidad.
 
 ## Cómo correr en local
 

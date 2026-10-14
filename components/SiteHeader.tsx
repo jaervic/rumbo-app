@@ -14,6 +14,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AccountButton from "@/components/AccountButton";
+import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function SiteHeader() {
@@ -26,16 +27,10 @@ export default function SiteHeader() {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="flex items-center gap-2 rounded-md font-heading text-lg font-bold tracking-tight text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-label="Rumbo, ir al inicio"
+          className="flex items-center rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          {/* Marca provisional (D4 hará el logo definitivo): inicial de Rumbo en el color de marca. */}
-          <span
-            className="grid size-7 place-items-center rounded-lg bg-brand text-sm font-bold text-brand-foreground"
-            aria-hidden="true"
-          >
-            R
-          </span>
-          Rumbo
+          <Logo className="text-lg" />
         </Link>
 
         <div className="flex items-center gap-1">

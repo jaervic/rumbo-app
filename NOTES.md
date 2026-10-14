@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** D3 (pulido de componentes y estados)
+**Última actualización:** D4 (marca e iconos de app)
 
 ---
 
@@ -134,6 +134,7 @@ components/
   InlineMessage.tsx       → feedback unificado éxito/error/info (D3)
   EmptyState.tsx          → estado vacío con icono, texto y CTA (D3)
   DriverGridSkeleton.tsx  → esqueleto del listado de conductores (D3)
+  Logo.tsx                → marca (pin + wordmark) con tokens (D4)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -348,6 +349,13 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### D4 — Marca y app móvil ✅
+- `components/Logo.tsx`: marca Rumbo (pin sobre insignia) con tokens; usada en `SiteHeader`.
+- Iconos: `app/icon.svg` (favicon), `app/apple-icon.png` y `public/icon-{192,512,maskable-512}.png`
+  generados con `sharp` desde el SVG de la marca. Se eliminó el `favicon.ico` por defecto de Next.
+- `app/manifest.ts` (PWA: standalone, theme_color, iconos) y `app/opengraph-image.tsx` (1200×630 con
+  `ImageResponse`). `metadataBase` desde `NEXT_PUBLIC_SITE_URL`.
 
 ### D3 — Pulido de componentes y estados ✅
 - `components/InlineMessage.tsx`: caja única de feedback (success/error/info) con tokens; adoptada en

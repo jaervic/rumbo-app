@@ -14,10 +14,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/** Descripción reutilizada por metadata, Open Graph y Twitter. */
+const DESCRIPTION =
+  "Cotiza el precio de un viaje en Venezuela según origen, destino, pasajeros y vehículo. Encuentra conductores cerca y mira sus valoraciones.";
+
 export const metadata: Metadata = {
+  // `metadataBase` resuelve las URLs relativas de OG/Twitter (imagen, canonical). En Vercel se define
+  // NEXT_PUBLIC_SITE_URL con el dominio final; en local cae a localhost.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  applicationName: "Rumbo",
   title: "Rumbo · Cotizador de transporte",
-  description:
-    "Cotiza el precio de un viaje en Venezuela según origen, destino, pasajeros y vehículo. Encuentra conductores cerca y mira sus valoraciones.",
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Rumbo",
+    title: "Rumbo · Cotizador de transporte",
+    description: DESCRIPTION,
+    locale: "es_VE",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Rumbo · Cotizador de transporte",
+    description: DESCRIPTION,
+  },
 };
 
 /**
