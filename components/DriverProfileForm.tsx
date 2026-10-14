@@ -10,6 +10,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,12 +69,14 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
   const [vehicle, setVehicle] = useState<Vehicle | null>(() => toVehicle(initial));
   const [tariff, setTariff] = useState<DriverTariffConfig>(() => toTariff(initial));
   const [isVisible, setIsVisible] = useState(() => initial?.isVisible ?? false);
+  const [acceptTerms, setAcceptTerms] = useState(() => initial?.termsAccepted ?? false);
   const [message, setMessage] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
   const [pending, startTransition] = useTransition();
 
+  const banned = initial?.banned ?? false;
   const nameValid = isValidName(fullName);
-  const canSave = nameValid && vehicle !== null;
+  const canSave = nameValid && vehicle !== null && acceptTerms && !banned;
 
   const handleVehicleTypeChange = (next: VehicleType) => {
     setVehicleType(next);
@@ -86,7 +89,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
     setSucceeded(false);
 
     if (!canSave || vehicle === null) {
-      setMessage("Completa tu nombre y el vehículo (marca, modelo y año).");
+      setMessage("Completa tu nombre, el vehículo y acepta las normas.");
       return;
     }
 
@@ -101,6 +104,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
         vehicleType: vehicle.vehicleType,
         isVisible,
         tariff,
+        acceptTerms,
       });
 
       if (result.ok) {
@@ -217,11 +221,40 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
         </label>
       </section>
 
+      {/* T: normas obligatorias. Sin esto la RLS tampoco deja publicar, así que se pide aquí. */}
+      <section className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={acceptTerms}
+            onChange={(event) => setAcceptTerms(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-primary"
+          />
+          <span className="text-xs text-muted-foreground">
+            He leído y acepto las{" "}
+            <Link href="/normas" className="font-medium text-foreground underline underline-offset-4">
+              normas de la comunidad
+            </Link>{" "}
+            y me comprometo a un uso responsable de Rumbo.
+          </span>
+        </label>
+      </section>
+
+      {banned && (
+        <InlineMessage variant="error">
+          Tu cuenta está suspendida y no puedes publicar. Escríbenos si crees que es un error.
+        </InlineMessage>
+      )}
+
       {message !== null && (
         <InlineMessage variant={succeeded ? "success" : "error"}>{message}</InlineMessage>
       )}
 
-      <Button type="submit" className="min-h-12 w-full text-base font-semibold" disabled={pending}>
+      <Button
+        type="submit"
+        className="min-h-12 w-full text-base font-semibold"
+        disabled={pending || banned}
+      >
         {pending ? (
           <>
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />

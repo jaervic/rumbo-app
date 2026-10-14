@@ -40,6 +40,8 @@ export const driverProfileInputSchema = z.object({
   vehicleType: z.enum(VEHICLE_TYPES),
   isVisible: z.boolean(),
   tariff: tariffInputSchema,
+  /** Aceptación de las normas (T): sin esto no se puede publicar ni reseñar. */
+  acceptTerms: z.boolean(),
 });
 
 export const reviewInputSchema = z.object({
@@ -48,5 +50,30 @@ export const reviewInputSchema = z.object({
   comment: z.string().trim().max(1000).default(""),
 });
 
+export const reportInputSchema = z.object({
+  targetType: z.enum(["driver", "review"]),
+  targetId: z.uuid(),
+  reason: z.string().trim().min(1).max(120),
+  details: z.string().trim().max(1000).default(""),
+});
+
+export const resolveReportInputSchema = z.object({
+  reportId: z.uuid(),
+  status: z.enum(["resolved", "dismissed"]),
+});
+
+export const banInputSchema = z.object({
+  profileId: z.uuid(),
+  banned: z.boolean(),
+});
+
+export const driverBanInputSchema = z.object({
+  driverId: z.uuid(),
+  banned: z.boolean(),
+});
+
 export type DriverProfileInput = z.infer<typeof driverProfileInputSchema>;
 export type ReviewInput = z.infer<typeof reviewInputSchema>;
+export type ReportInput = z.infer<typeof reportInputSchema>;
+export type ResolveReportInput = z.infer<typeof resolveReportInputSchema>;
+export type BanInput = z.infer<typeof banInputSchema>;

@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** G1 (base open source: licencia, docs y donaciones)
+**Última actualización:** T (confianza y moderación, sin KYC)
 
 ---
 
@@ -108,6 +108,8 @@ app/
   conductores/[id]/page.tsx → perfil público + reseñas (Fase 2)
   panel/page.tsx          → publicar/editar la ficha del conductor (Fase 2)
   cuenta/page.tsx         → cuenta: sesión, perfil de cotización y acceso al panel (D2)
+  admin/page.tsx          → moderación, solo admin (T)
+  normas/page.tsx         → normas de la comunidad y privacidad (T)
   globals.css             → estilos globales Tailwind
 proxy.ts                  → refresco de sesión Supabase (convención proxy de Next 16)
 
@@ -136,6 +138,8 @@ components/
   EmptyState.tsx          → estado vacío con icono, texto y CTA (D3)
   DriverGridSkeleton.tsx  → esqueleto del listado de conductores (D3)
   Logo.tsx                → marca (pin + wordmark) con tokens (D4)
+  ReportButton.tsx        → reportar un perfil (T)
+  AdminReportActions.tsx  → resolver/descartar/banear en /admin (T)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -350,6 +354,18 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### T — Confianza y moderación (sin KYC) ✅
+- Migración `0004_trust.sql`: `profiles` gana `terms_accepted_at`, `banned` e `is_admin`; tablas
+  `reports` (reportes) y `audit_log` (auditoría). Funciones `is_admin()` y `can_participate()`
+  (SECURITY DEFINER). RLS: reportes (autor o admin), auditoría (admin), y ban gating en drivers/reviews.
+  Se decidió que la RLS exija solo "no baneado" (el control real); la aceptación de normas se registra.
+- Server Actions: `lib/actions/admin.ts` (`resolveReport`, `setBan`, `setDriverBan`) con comprobación de
+  admin; `submitReport` en `lib/actions/drivers.ts`; `saveDriverProfile` exige términos y bloquea si
+  baneado.
+- UI: `ReportButton` en el perfil del conductor; checkbox de normas en `DriverProfileForm`; panel
+  `/admin` protegido por rol (404 si no es admin) con acciones de moderación; página pública `/normas`.
+- Sin verificación de identidad (decisión de producto): la confianza es reputación + moderación.
 
 ### G1 — Base open source ✅
 - `LICENSE` (**MIT**), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) y

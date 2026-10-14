@@ -21,6 +21,10 @@ export type Json =
 export type UserRole = "driver" | "customer";
 /** Tipo de vehículo en la base de datos (espejo de `VehicleType` de la app). */
 export type DbVehicleType = "moto" | "sedan" | "suv" | "van";
+/** Qué se puede reportar (T). */
+export type ReportTargetType = "driver" | "review";
+/** Estado de un reporte (T). */
+export type ReportStatus = "open" | "resolved" | "dismissed";
 
 export interface Database {
   public: {
@@ -32,6 +36,10 @@ export interface Database {
           full_name: string;
           phone: string | null;
           avatar_url: string | null;
+          /** Fecha en que aceptó las normas; `null` = todavía no puede publicar ni reseñar. */
+          terms_accepted_at: string | null;
+          banned: boolean;
+          is_admin: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -41,6 +49,9 @@ export interface Database {
           full_name?: string;
           phone?: string | null;
           avatar_url?: string | null;
+          terms_accepted_at?: string | null;
+          banned?: boolean;
+          is_admin?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -50,6 +61,9 @@ export interface Database {
           full_name?: string;
           phone?: string | null;
           avatar_url?: string | null;
+          terms_accepted_at?: string | null;
+          banned?: boolean;
+          is_admin?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -201,6 +215,83 @@ export interface Database {
           },
         ];
       };
+      reports: {
+        Row: {
+          id: string;
+          reporter_id: string;
+          target_type: ReportTargetType;
+          target_id: string;
+          reason: string;
+          details: string;
+          status: ReportStatus;
+          created_at: string;
+          resolved_by: string | null;
+          resolved_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          reporter_id: string;
+          target_type: ReportTargetType;
+          target_id: string;
+          reason: string;
+          details?: string;
+          status?: ReportStatus;
+          created_at?: string;
+          resolved_by?: string | null;
+          resolved_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          reporter_id?: string;
+          target_type?: ReportTargetType;
+          target_id?: string;
+          reason?: string;
+          details?: string;
+          status?: ReportStatus;
+          created_at?: string;
+          resolved_by?: string | null;
+          resolved_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reports_reporter_id_fkey";
+            columns: ["reporter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      audit_log: {
+        Row: {
+          id: string;
+          actor_id: string | null;
+          action: string;
+          target_type: string | null;
+          target_id: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          actor_id?: string | null;
+          action: string;
+          target_type?: string | null;
+          target_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          actor_id?: string | null;
+          action?: string;
+          target_type?: string | null;
+          target_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -217,3 +308,5 @@ export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Driver = Database["public"]["Tables"]["drivers"]["Row"];
 export type DriverTariff = Database["public"]["Tables"]["driver_tariffs"]["Row"];
 export type Review = Database["public"]["Tables"]["reviews"]["Row"];
+export type Report = Database["public"]["Tables"]["reports"]["Row"];
+export type AuditLog = Database["public"]["Tables"]["audit_log"]["Row"];

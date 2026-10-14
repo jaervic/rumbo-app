@@ -14,7 +14,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { driverProfileInputSchema, reviewInputSchema } from "@/lib/validation";
+import { driverProfileInputSchema, reportInputSchema, reviewInputSchema } from "@/lib/validation";
 import type { ActionResult } from "@/types";
 
 /** Guarda (crea o actualiza) la ficha pública del conductor autenticado. */
@@ -36,10 +36,35 @@ export async function saveDriverProfile(input: unknown): Promise<ActionResult> {
     return { ok: false, error: "Debes iniciar sesión." };
   }
 
-  // 1) Rol y nombre en el perfil. Upsert por si el trigger de alta no existía al registrarse.
-  const { error: profileError } = await supabase
+  // T: estado del usuario (baneado / términos). La RLS lo vuelve a comprobar, esto solo da un
+  // mensaje claro en vez de un fallo genérico.
+  const { data: currentProfile } = await supabase
     .from("profiles")
-    .upsert({ id: auth.user.id, role: "driver", full_name: data.fullName }, { onConflict: "id" });
+    .select("banned, terms_accepted_at")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+
+  if (currentProfile?.banned === true) {
+    return { ok: false, error: "Tu cuenta está suspendida. Contacta con soporte." };
+  }
+
+  const termsAcceptedAt =
+    currentProfile?.terms_accepted_at ?? (data.acceptTerms ? new Date().toISOString() : null);
+
+  if (termsAcceptedAt === null) {
+    return { ok: false, error: "Debes aceptar las normas para publicar tu ficha." };
+  }
+
+  // 1) Rol, nombre y términos en el perfil. Upsert por si el trigger de alta no existía al registrarse.
+  const { error: profileError } = await supabase.from("profiles").upsert(
+    {
+      id: auth.user.id,
+      role: "driver",
+      full_name: data.fullName,
+      terms_accepted_at: termsAcceptedAt,
+    },
+    { onConflict: "id" }
+  );
 
   if (profileError !== null) {
     return { ok: false, error: "No se pudo guardar tu perfil." };
@@ -132,6 +157,44 @@ export async function submitReview(input: unknown): Promise<ActionResult> {
 
   revalidatePath(`/conductores/${data.driverId}`);
   revalidatePath("/conductores");
+
+  return { ok: true };
+}
+
+/**
+ * Reporta un conductor o una reseña (T). Lo revisa un admin en `/admin`. No hay KYC: la moderación
+ * humana es la que decide (resolver o banear).
+ */
+export async function submitReport(input: unknown): Promise<ActionResult> {
+  if (!isSupabaseConfigured) {
+    return { ok: false, error: "Supabase no está configurado." };
+  }
+
+  const parsed = reportInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const data = parsed.data;
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+
+  if (auth.user === null) {
+    return { ok: false, error: "Inicia sesión para reportar." };
+  }
+
+  // La RLS exige que el usuario pueda participar (términos aceptados y no baneado).
+  const { error } = await supabase.from("reports").insert({
+    reporter_id: auth.user.id,
+    target_type: data.targetType,
+    target_id: data.targetId,
+    reason: data.reason,
+    details: data.details,
+  });
+
+  if (error !== null) {
+    return { ok: false, error: "No se pudo enviar el reporte." };
+  }
 
   return { ok: true };
 }

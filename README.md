@@ -451,6 +451,22 @@ vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **l
 - La página pública se renderiza en el servidor (dinámica, lee la base): mejor SEO y sin exponer la
   ubicación exacta del conductor.
 
+## Confianza y moderación (T)
+
+Rumbo **no recoge documentos de identidad** (proyecto sin empresa). La confianza se construye con
+reputación y moderación:
+
+- **Normas** (`/normas`): se aceptan al publicar la ficha; quedan registradas en
+  `profiles.terms_accepted_at`.
+- **Reportes**: un usuario con sesión puede reportar un perfil desde su ficha. Se guardan en `reports`.
+- **Moderación** (`/admin`, solo rol admin con `profiles.is_admin`): resolver/descartar reportes,
+  suspender conductores y **auditoría** (`audit_log`). Sin sesión redirige al login; sin rol, devuelve
+  404.
+- **Ban**: un usuario suspendido no puede publicar ni reseñar; la RLS (`can_participate()`) lo impide
+  en la base, no solo en la UI.
+
+Para marcar un admin, actualiza su fila en `profiles` (`is_admin = true`) desde el panel de Supabase.
+
 ## Deploy en Vercel
 
 Pasos manuales (una sola vez):

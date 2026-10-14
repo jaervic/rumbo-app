@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Car, MapPin, Wallet } from "lucide-react";
 import DriverRating from "@/components/DriverRating";
+import ReportButton from "@/components/ReportButton";
 import ReviewForm from "@/components/ReviewForm";
 import ReviewList from "@/components/ReviewList";
 import { getPublicDriver, listDriverReviews } from "@/lib/drivers";
@@ -122,6 +123,11 @@ export default async function DriverDetailPage({ params }: { params: Promise<{ i
             <ReviewForm driverId={driver.id} isAuthenticated={isAuthenticated} />
           </div>
         </section>
+
+        {/* Reporte del perfil (T): solo con sesión. Lo revisa un admin. */}
+        <div className="flex justify-center pt-2">
+          <ReportButton targetType="driver" targetId={driver.id} isAuthenticated={isAuthenticated} />
+        </div>
       </div>
     </main>
   );

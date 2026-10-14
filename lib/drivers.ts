@@ -9,7 +9,12 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import type { DbVehicleType, DriverTariff } from "@/types/database";
+import type {
+  DbVehicleType,
+  DriverTariff,
+  ReportStatus,
+  ReportTargetType,
+} from "@/types/database";
 
 /** Ficha pública resumida (listado). */
 export interface PublicDriverSummary {
@@ -41,7 +46,7 @@ export interface PublicReview {
   customerName: string;
 }
 
-/** El conductor propio (para el panel), con su tarifa y su estado de visibilidad. */
+/** El conductor propio (para el panel), con su tarifa y su estado. */
 export interface MyDriver {
   id: string;
   fullName: string;
@@ -54,7 +59,84 @@ export interface MyDriver {
   isVisible: boolean;
   isActive: boolean;
   tariff: DriverTariff | null;
+  /** T: ya aceptó las normas. */
+  termsAccepted: boolean;
+  /** T: cuenta suspendida. */
+  banned: boolean;
 }
+
+/** Reporte para el panel de moderación (T). */
+export interface AdminReport {
+  id: string;
+  targetType: ReportTargetType;
+  targetId: string;
+  reason: string;
+  details: string;
+  createdAt: string;
+  reporterName: string;
+}
+
+/** El perfil del usuario autenticado (o `null`). Sirve para saber si es admin. */
+export async function getCurrentProfile(): Promise<{
+  id: string;
+  fullName: string;
+  isAdmin: boolean;
+} | null> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (auth.user === null) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, full_name, is_admin")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+
+  if (profile === null) return { id: auth.user.id, fullName: "", isAdmin: false };
+
+  return { id: profile.id, fullName: profile.full_name, isAdmin: profile.is_admin };
+}
+
+/** Reportes abiertos, para el panel de moderación. */
+export async function listOpenReports(limit = 100): Promise<AdminReport[]> {
+  const supabase = await createClient();
+
+  const { data: reports, error } = await supabase
+    .from("reports")
+    .select("id, target_type, target_id, reason, details, created_at, reporter_id")
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error !== null || reports === null) return [];
+
+  const reporterIds = [...new Set(reports.map((report) => report.reporter_id))];
+  const nameById = new Map<string, string>();
+
+  if (reporterIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", reporterIds);
+
+    for (const profile of profiles ?? []) {
+      nameById.set(profile.id, profile.full_name.trim());
+    }
+  }
+
+  return reports.map((report) => ({
+    id: report.id,
+    targetType: report.target_type as ReportTargetType,
+    targetId: report.target_id,
+    reason: report.reason,
+    details: report.details,
+    createdAt: report.created_at,
+    reporterName: nameById.get(report.reporter_id) || "Usuario",
+  }));
+}
+
+/** Estado de reporte (reexportado para la UI). */
+export type { ReportStatus };
 
 /** Nombre a mostrar cuando el perfil no tiene `full_name`. */
 const FALLBACK_NAME = "Conductor";
@@ -198,7 +280,11 @@ export async function getMyDriver(profileId: string): Promise<MyDriver | null> {
   if (error !== null || driver === null) return null;
 
   const [{ data: profile }, { data: tariff }] = await Promise.all([
-    supabase.from("profiles").select("full_name").eq("id", profileId).maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("full_name, banned, terms_accepted_at")
+      .eq("id", profileId)
+      .maybeSingle(),
     supabase.from("driver_tariffs").select("*").eq("driver_id", driver.id).maybeSingle(),
   ]);
 
@@ -214,5 +300,7 @@ export async function getMyDriver(profileId: string): Promise<MyDriver | null> {
     isVisible: driver.is_visible,
     isActive: driver.is_active,
     tariff: tariff ?? null,
+    termsAccepted: profile?.terms_accepted_at != null,
+    banned: profile?.banned === true,
   };
 }
