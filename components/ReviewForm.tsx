@@ -42,7 +42,7 @@ export default function ReviewForm({ driverId, isAuthenticated }: ReviewFormProp
 
   if (succeeded) {
     return (
-      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+      <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm text-success">
         ¡Gracias! Tu reseña se publicó.
       </p>
     );
@@ -82,7 +82,7 @@ export default function ReviewForm({ driverId, isAuthenticated }: ReviewFormProp
               <Star
                 className={cn(
                   "size-6",
-                  value <= rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40"
+                  value <= rating ? "fill-warning text-warning" : "text-muted-foreground/40"
                 )}
                 aria-hidden="true"
               />

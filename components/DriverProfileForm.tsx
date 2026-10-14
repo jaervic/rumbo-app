@@ -220,7 +220,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
         <p
           role="status"
           className={
-            succeeded ? "text-sm text-emerald-700 dark:text-emerald-400" : "text-sm text-destructive"
+            succeeded ? "text-sm text-success" : "text-sm text-destructive"
           }
         >
           {message}

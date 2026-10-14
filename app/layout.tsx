@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cotizador de Transporte",
+  title: "Rumbo · Cotizador de transporte",
   description:
-    "Calcula el precio estimado de un viaje en Venezuela según origen, destino, pasajeros y tipo de vehículo.",
+    "Cotiza el precio de un viaje en Venezuela según origen, destino, pasajeros y vehículo. Encuentra conductores cerca y mira sus valoraciones.",
 };
 
 /**
@@ -23,24 +23,40 @@ export const metadata: Metadata = {
  * que `env(safe-area-inset-*)` funcione en iOS (notch y barra inferior del gesto
  * home). No se fija `maximumScale` ni `userScalable`: bloquear el zoom rompe la
  * accesibilidad y el zoom de página en táctil.
+ *
+ * `themeColor` pinta la barra del navegador en móvil; dos valores para claro y oscuro.
  */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f8f9fb" },
+    { media: "(prefers-color-scheme: dark)", color: "#1b1d23" },
   ],
 };
 
+/**
+ * Script anti-*flash* del tema (D1): se ejecuta ANTES del primer pintado y aplica la clase `dark`
+ * según la preferencia guardada o la del sistema. Sin esto, el usuario vería un destello claro antes
+ * de que React hidrate. Es intencionadamente un script inline (la CSP ya permite `'unsafe-inline'`
+ * para los scripts de hidratación de Next).
+ */
+const THEME_INIT_SCRIPT = `(function(){try{var k="rumbo-theme";var s=localStorage.getItem(k);var d=s?s==="dark":window.matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.classList.toggle("dark",d);}catch(e){}})();`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // suppressHydrationWarning: el script añade `dark` al <html> antes de hidratar y React no debe
+    // quejarse de esa diferencia esperada.
     <html
       lang="es"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {children}
+      </body>
     </html>
   );
 }

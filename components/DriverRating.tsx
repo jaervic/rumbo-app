@@ -26,7 +26,7 @@ export default function DriverRating({ value, count, className }: DriverRatingPr
             key={position}
             className={cn(
               "size-3.5",
-              position <= filled ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"
+              position <= filled ? "fill-warning text-warning" : "text-muted-foreground/30"
             )}
           />
         ))}

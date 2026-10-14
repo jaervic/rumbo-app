@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** Fase 2 (perfiles públicos + reseñas)
+**Última actualización:** D1 (sistema de diseño y tema "Rumbo")
 
 ---
 
@@ -126,6 +126,7 @@ components/
   DriverProfileForm.tsx   → formulario de la ficha pública (Fase 2)
   ReviewList.tsx          → lista de reseñas (Fase 2)
   ReviewForm.tsx          → formulario de reseña (Fase 2)
+  ThemeToggle.tsx         → botón claro/oscuro (D1)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -313,6 +314,21 @@ public/                   → assets estáticos
   duplicaba la ruta; `lib/supabase/config.ts` la normaliza (y se corrigió el `.env.local`).
 - Pendiente: subir foto de perfil (Storage), editar/borrar reseña desde la UI y geolocalización de
   cercanía (Fase 3).
+
+### D1 — Sistema de diseño y tema "Rumbo" ✅
+- Marca: **Rumbo**. Acento **azul pizarra suave**, base *off-white* grisácea (homenaje al taxi blanco
+  venezolano). Decisión de producto: la identidad de color se apoya en los taxis blancos locales, no
+  en el amarillo internacional.
+- `app/globals.css`: paletas clara y oscura recalibradas, tokens semánticos (`brand`, `success`,
+  `warning`, `info`, `destructive`), `color-scheme`, radios y `theme-color`. **Corregido** el token
+  `--font-sans` (antes autorreferente: Geist Sans no se aplicaba).
+- **Modo oscuro real**: script inline anti-*flash* en `app/layout.tsx` + `components/ThemeToggle.tsx`
+  (el icono cambia con CSS `dark:`, sin estado ni parpadeo). Persiste en `localStorage` (`rumbo-theme`)
+  y respeta `prefers-color-scheme`.
+- Migrados a tokens los colores sueltos: `QuoteForm` (azul→brand), `ReviewForm`/`DriverProfileForm`
+  (esmeralda→success), `DriverRating`/`ReviewList`/`TariffEditor` (ámbar→warning).
+- Metadatos de la app renombrados a Rumbo. Pendiente de diseño: D2 (bottom nav, header/CTA sticky),
+  D3 (pulido y estados), D4 (logo/iconos/manifest), D5 (rendimiento y a11y).
 
 ---
 

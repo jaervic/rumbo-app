@@ -1,4 +1,4 @@
-# App de Transporte - Estimador de Precios
+# Rumbo — Cotizador y mercado de transporte
 
 Web-app para estimar precios de transporte (moto, sedán, SUV y van) para conductores independientes en
 Venezuela: se elige origen y destino en el mapa (o se escribe la dirección), el vehículo y los
@@ -252,6 +252,24 @@ Detectado al probar la URL de producción en un celular real:
   actualiza al siguiente cambio de ruta/vehículo/pasajeros: falta un reloj que lo refresque solo.
 - ~~Instalar Vitest~~ **Hecho en la Fase 0**: la suite del motor vive en `lib/pricing.test.ts`. Falta
   ampliarla (rutas, geocoding, perfil del conductor) y añadir CI que la corra en cada push.
+
+## Diseño y tema (D1)
+
+La marca es **Rumbo**. El sistema visual vive en `app/globals.css`:
+
+- **Base “taxi blanco”**: fondo *off-white* con un leve sesgo frío (blanco texturizado, no plano) y
+  superficies/tarjetas un punto más claras para elevarse solas. Jerarquía por elevación sutil, no por
+  bordes duros.
+- **Acento azul pizarra suave** (`--brand`) para acciones, enlaces y foco. **Tokens semánticos**
+  (`--success`, `--warning`, `--info`, `--destructive`) sustituyen a los colores sueltos: los
+  componentes usan `bg-brand`, `text-success`, `fill-warning`… nunca `blue-600`/`amber-400`.
+- **Modo oscuro real**: paleta de grises cálidos, detección de la preferencia del sistema y toggle
+  manual (`components/ThemeToggle.tsx`). Un script inline en `app/layout.tsx` aplica el tema antes del
+  primer pintado para evitar el destello. `theme-color` cambia con el esquema.
+- **Tipografía**: se corrigió el token de fuente (ahora Geist Sans se aplica de verdad).
+
+Pendiente (D2–D5): bottom nav móvil, header/CTA sticky, *skeletons*, logo/iconos/manifest y auditoría
+de rendimiento.
 
 ## Cómo correr en local
 

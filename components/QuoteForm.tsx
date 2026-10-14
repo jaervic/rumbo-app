@@ -795,8 +795,7 @@ export default function QuoteForm({
                 className={cn(
                   "size-11 md:size-9",
                   // Estado activo: azul claro, para que se vea que YA hay ubicación sin leer nada.
-                  hasLocation &&
-                    "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
+                  hasLocation && "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15"
                 )}
               >
                 {isLocating ? (
@@ -812,7 +811,7 @@ export default function QuoteForm({
               {/* Check pequeño: refuerza que la ubicación está activa. */}
               {hasLocation && !isLocating && (
                 <span
-                  className="pointer-events-none absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm"
+                  className="pointer-events-none absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm"
                   aria-hidden="true"
                 >
                   <Check className="size-2.5" />
@@ -853,9 +852,9 @@ export default function QuoteForm({
             onClick={clearLocation}
             aria-label="Dejar de usar mi ubicación"
             title="Dejar de usar mi ubicación"
-            className="group flex w-fit items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 transition-colors outline-none hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-ring/50 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+            className="group flex w-fit items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-medium text-success transition-colors outline-none hover:bg-success/15 focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            <span className="size-1.5 shrink-0 rounded-full bg-blue-600" aria-hidden="true" />
+            <span className="size-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />
             <span className="group-hover:hidden group-focus-visible:hidden">Ubicación activa</span>
             <span className="hidden group-hover:inline group-focus-visible:inline">
               Dejar de usar mi ubicación

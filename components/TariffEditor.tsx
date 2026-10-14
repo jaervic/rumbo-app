@@ -227,7 +227,7 @@ export default function TariffEditor({ value, onChange, className }: TariffEdito
                 <span
                   className={cn(
                     "tabular-nums",
-                    sample.floorApplied && "text-amber-600 dark:text-amber-400"
+                    sample.floorApplied && "text-warning"
                   )}
                 >
                   {formatUsd(sample.total)}
@@ -237,7 +237,7 @@ export default function TariffEditor({ value, onChange, className }: TariffEdito
               {/* Piso aplicado (Fase 6.2.2): se dice y se pinta en ámbar para que se entienda que ese
                   importe es el suelo, no el cálculo. */}
               {sample.floorApplied && (
-                <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                <p className="text-xs font-medium text-warning">
                   Se aplica la tarifa mínima de {formatUsd(value.minFare)}.
                 </p>
               )}

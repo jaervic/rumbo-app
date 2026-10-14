@@ -41,7 +41,7 @@ export default function ReviewList({ reviews }: { reviews: PublicReview[] }) {
                 className={cn(
                   "size-3.5",
                   position <= review.rating
-                    ? "fill-amber-400 text-amber-400"
+                    ? "fill-warning text-warning"
                     : "text-muted-foreground/30"
                 )}
                 aria-hidden="true"

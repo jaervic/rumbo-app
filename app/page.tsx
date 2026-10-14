@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import AccountButton from "@/components/AccountButton";
 import DriverProfileButton from "@/components/DriverProfileButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import QuoteForm, { type QuoteFormHandle } from "@/components/QuoteForm";
 import MapModeToggle from "@/components/MapModeToggle";
 import MapPickerWrapper from "@/components/MapPickerWrapper";
@@ -157,6 +158,7 @@ export default function Home() {
             Conductores
           </Link>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <AccountButton />
             {!profileLoading && <DriverProfileButton />}
           </div>
