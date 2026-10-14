@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import BottomNav from "@/components/BottomNav";
+import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -55,7 +57,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        {children}
+        {/* Shell global (D2): cabecera pegada arriba y barra inferior en móvil. */}
+        <SiteHeader />
+        {/* pb-20 reserva el alto de la barra inferior en móvil para que no tape el final del contenido. */}
+        <div className="flex flex-1 flex-col pb-20 md:pb-0">{children}</div>
+        <BottomNav />
       </body>
     </html>
   );

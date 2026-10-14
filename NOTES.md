@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** D1 (sistema de diseño y tema "Rumbo")
+**Última actualización:** D2 (shell móvil: header, barra inferior y cuenta)
 
 ---
 
@@ -106,6 +106,7 @@ app/
   conductores/page.tsx    → listado público de conductores (Fase 2)
   conductores/[id]/page.tsx → perfil público + reseñas (Fase 2)
   panel/page.tsx          → publicar/editar la ficha del conductor (Fase 2)
+  cuenta/page.tsx         → cuenta: sesión, perfil de cotización y acceso al panel (D2)
   globals.css             → estilos globales Tailwind
 proxy.ts                  → refresco de sesión Supabase (convención proxy de Next 16)
 
@@ -127,6 +128,9 @@ components/
   ReviewList.tsx          → lista de reseñas (Fase 2)
   ReviewForm.tsx          → formulario de reseña (Fase 2)
   ThemeToggle.tsx         → botón claro/oscuro (D1)
+  SiteHeader.tsx          → cabecera sticky con marca + cuenta (D2)
+  BottomNav.tsx           → barra inferior móvil de 4 pestañas (D2)
+  SignOutButton.tsx       → cerrar sesión, para /cuenta (D2)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -329,6 +333,18 @@ public/                   → assets estáticos
   (esmeralda→success), `DriverRating`/`ReviewList`/`TariffEditor` (ámbar→warning).
 - Metadatos de la app renombrados a Rumbo. Pendiente de diseño: D2 (bottom nav, header/CTA sticky),
   D3 (pulido y estados), D4 (logo/iconos/manifest), D5 (rendimiento y a11y).
+
+### D2 — Shell móvil ✅
+- `components/SiteHeader.tsx`: cabecera sticky con marca Rumbo, tema y cuenta (cuenta solo en
+  escritorio). Oculta en `/login`.
+- `components/BottomNav.tsx`: barra inferior móvil con 4 pestañas (Cotizador · Conductores · Mi panel
+  · Cuenta), `safe-area-inset-bottom`, activo por ruta y `backdrop-blur`. Oculta en `/login` y en `md+`.
+- `app/cuenta/page.tsx` + `components/SignOutButton.tsx`: destino de la pestaña Cuenta (sesión, perfil
+  de cotización, panel público y cerrar sesión). Sin sesión redirige a `/login` (307).
+- `app/layout.tsx` monta el shell y reserva `pb-20` en móvil; la home se simplificó (la navegación
+  vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
+  botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
+- z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
 
 ---
 

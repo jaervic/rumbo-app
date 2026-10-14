@@ -21,8 +21,8 @@ de OSRM. Sin backend: todo se calcula en el navegador y el perfil del conductor 
 ## Estructura de Carpetas
 
 ```text
-app/            # Rutas (App Router): /, /login, /auth/callback, /conductores, /conductores/[id], /panel
-components/     # Componentes reutilizables (DriverCard, ReviewForm, DriverProfileForm...)
+app/            # Rutas (App Router): /, /login, /auth/callback, /conductores, /conductores/[id], /panel, /cuenta
+components/     # Reutilizables (SiteHeader, BottomNav, DriverCard, ReviewForm, DriverProfileForm...)
   ui/           # Componentes de base (shadcn/ui sobre Base UI)
 hooks/          # Hooks de cliente (useRoute, useDriverProfile, useUserLocation)
 lib/            # Utilidades y lógica de negocio (pricing, geocoding, routing...)
@@ -268,8 +268,19 @@ La marca es **Rumbo**. El sistema visual vive en `app/globals.css`:
   primer pintado para evitar el destello. `theme-color` cambia con el esquema.
 - **Tipografía**: se corrigió el token de fuente (ahora Geist Sans se aplica de verdad).
 
-Pendiente (D2–D5): bottom nav móvil, header/CTA sticky, *skeletons*, logo/iconos/manifest y auditoría
-de rendimiento.
+### Shell móvil (D2)
+
+- **`SiteHeader`** (`components/SiteHeader.tsx`): cabecera pegada arriba (`sticky`) con la marca
+  **Rumbo**, el botón de tema y la cuenta (en escritorio). Oculta en `/login`.
+- **`BottomNav`** (`components/BottomNav.tsx`): barra inferior en móvil con 4 pestañas —Cotizador,
+  Conductores, Mi panel y Cuenta— al alcance del pulgar, con `safe-area-inset-bottom`, resalte de la
+  pestaña activa y `backdrop-blur`. Oculta en `/login` y en escritorio.
+- **`/cuenta`**: destino de la pestaña Cuenta; muestra la sesión, el perfil de cotización
+  (`DriverProfileButton`), el acceso al panel público y el cierre de sesión.
+- El layout reserva `pb-20` en móvil para que la barra no tape el contenido.
+
+Pendiente (D3–D5): pulido de componentes y estados (skeletons, *empty states*), logo/iconos/manifest
+y auditoría de rendimiento/accesibilidad.
 
 ## Cómo correr en local
 

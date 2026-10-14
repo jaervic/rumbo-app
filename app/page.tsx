@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { Users } from "lucide-react";
-import AccountButton from "@/components/AccountButton";
 import DriverProfileButton from "@/components/DriverProfileButton";
-import ThemeToggle from "@/components/ThemeToggle";
 import QuoteForm, { type QuoteFormHandle } from "@/components/QuoteForm";
 import MapModeToggle from "@/components/MapModeToggle";
 import MapPickerWrapper from "@/components/MapPickerWrapper";
@@ -149,19 +145,10 @@ export default function Home() {
         {/* Tipografía escalonada: en móvil 320px un h1 de 3xl parte el título en 3 líneas. */}
         {/* Barra superior: el perfil del conductor va arriba a la derecha (Fase 6.2). No se renderiza
             hasta saber si hay perfil (`profileLoading`), y el botón se trunca si el nombre es largo. */}
-        <div className="flex items-center justify-between gap-2">
-          <Link
-            href="/conductores"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Users className="size-4" aria-hidden="true" />
-            Conductores
-          </Link>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <AccountButton />
-            {!profileLoading && <DriverProfileButton />}
-          </div>
+        {/* La navegación (Cotizador/Conductores/Panel/Cuenta) vive en la barra inferior; aquí solo
+            queda el perfil de cotización del conductor, que es específico de esta pantalla. */}
+        <div className="flex justify-end">
+          {!profileLoading && <DriverProfileButton />}
         </div>
 
         <header className="space-y-1.5 text-center sm:space-y-2">
