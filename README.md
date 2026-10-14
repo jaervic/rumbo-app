@@ -21,13 +21,14 @@ de OSRM. Sin backend: todo se calcula en el navegador y el perfil del conductor 
 ## Estructura de Carpetas
 
 ```text
-app/            # Rutas y componentes de página (Next.js App Router: /, /login, /auth/callback)
-components/     # Componentes reutilizables
+app/            # Rutas (App Router): /, /login, /auth/callback, /conductores, /conductores/[id], /panel
+components/     # Componentes reutilizables (DriverCard, ReviewForm, DriverProfileForm...)
   ui/           # Componentes de base (shadcn/ui sobre Base UI)
 hooks/          # Hooks de cliente (useRoute, useDriverProfile, useUserLocation)
 lib/            # Utilidades y lógica de negocio (pricing, geocoding, routing...)
+  actions/      # Server Actions (drivers: publicar perfil, reseñar)
   supabase/     # Clientes de Supabase (browser/server/session) y config
-types/          # Definiciones de tipos TypeScript (incl. types/database.ts)
+types/          # Tipos (index, vehicle, database de Supabase)
 supabase/       # Migraciones SQL (esquema + RLS) para Supabase
 public/         # Assets estáticos
 proxy.ts        # Refresco de sesión de Supabase (convención `proxy` de Next 16)
@@ -351,6 +352,25 @@ recalcula `rating_avg`/`rating_count` tras cada reseña.
 
 El perfil del conductor **sigue en `localStorage`** por ahora; la migración a la nube llega en una
 fase posterior.
+
+## Perfiles públicos y reseñas (Fase 2)
+
+Un conductor con sesión puede **publicar su ficha** en `/panel` (nombre visible, ciudad, bio,
+vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **listado** en
+`/conductores` y el **perfil** en `/conductores/[id]` con su valoración media.
+
+- **Datos**: `lib/drivers.ts` (lecturas, solo servidor) combina consultas planas y las une en memoria
+  para evitar la frágil inferencia de tipos de los *joins* de PostgREST.
+- **Escritura**: Server Actions en `lib/actions/drivers.ts`. Toda entrada pasa por **Zod**
+  (`lib/validation.ts`) antes de tocar la base; la sesión se resuelve en el servidor y la RLS es la
+  última barrera.
+- **Reseñas**: 1–5 estrellas + comentario; una por cliente y conductor (restricción en la base). No se
+  puede reseñar a un conductor inactivo ni a uno mismo. Al publicar, un trigger recalcula
+  `rating_avg`/`rating_count`.
+- `/conductores` y `/conductores/[id]` devuelven **códigos HTTP correctos** (200/404/307); por eso no
+  hay `loading.tsx` global (un límite de streaming convertiría los 404 en 200).
+- La página pública se renderiza en el servidor (dinámica, lee la base): mejor SEO y sin exponer la
+  ubicación exacta del conductor.
 
 ## Deploy en Vercel
 

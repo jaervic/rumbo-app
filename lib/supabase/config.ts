@@ -10,7 +10,16 @@
  * el SDK, así que sin variables no hay errores ni pantallas rotas.
  */
 
-export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+/**
+ * Normaliza la URL del proyecto: el SDK espera SOLO el dominio (`https://<ref>.supabase.co`).
+ * Es frecuente pegar por error la URL de la API (`.../rest/v1/`); recortarla aquí evita que todas
+ * las llamadas salgan con una ruta duplicada. También quita barras finales.
+ */
+function normalizeUrl(raw: string): string {
+  return raw.trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+}
+
+export const SUPABASE_URL = normalizeUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
+export const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
 
 export const isSupabaseConfigured = SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;

@@ -110,6 +110,15 @@ export interface QuoteResult {
 /** Par de coordenadas [latitud, longitud]. */
 export type Coords = [number, number];
 
+/**
+ * Resultado de una Server Action (Fase 2). `error` es un mensaje apto para mostrar al usuario: nunca
+ * incluye detalles técnicos de la base de datos.
+ */
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 /** Coordenadas geocodificadas de origen y destino (null = aún no resuelto). */
 export interface QuoteCoords {
   origin: Coords | null;

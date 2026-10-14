@@ -81,6 +81,12 @@ export default function AccountButton() {
         <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
         {email}
       </span>
+      <Link
+        href="/panel"
+        className={cn(buttonVariants({ variant: "ghost" }), "min-h-10 gap-1.5")}
+      >
+        Mi panel
+      </Link>
       <Button
         type="button"
         variant="ghost"

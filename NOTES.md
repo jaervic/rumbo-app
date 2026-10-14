@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** Fase 1 (Supabase + auth por enlace mágico)
+**Última actualización:** Fase 2 (perfiles públicos + reseñas)
 
 ---
 
@@ -54,8 +54,9 @@ La app **funciona end-to-end y está deployada**.
 - Deploy en Vercel con HTTPS y redeploy automático por cada push a main.
 
 **Lo que NO hace todavía:**
-- Hay **login** (enlace mágico, Fase 1) y esquema en Supabase, pero el perfil del conductor sigue en
-  `localStorage` y aún no hay perfiles públicos ni reseñas (llegan en la Fase 2).
+- Hay **login** (enlace mágico), **perfiles públicos y reseñas** (Fase 2) y esquema en Supabase. El
+  perfil del conductor para COTIZAR sigue en `localStorage` (la migración a la nube se pospone).
+- No hay búsqueda por cercanía (Fase 3), ni fotos de perfil, ni suscripción activa.
 - No hay conversión a bolívares (solo USD).
 - No hay historial de carreras.
 - No hay rutas guardadas.
@@ -100,9 +101,11 @@ app/
   page.tsx                → página principal, integra todo
   error.tsx               → límite de error (Client Component, con reset)
   not-found.tsx           → 404
-  loading.tsx             → estado de carga
   login/page.tsx          → acceso por enlace mágico (Fase 1)
   auth/callback/route.ts  → canjea el código por sesión (Fase 1)
+  conductores/page.tsx    → listado público de conductores (Fase 2)
+  conductores/[id]/page.tsx → perfil público + reseñas (Fase 2)
+  panel/page.tsx          → publicar/editar la ficha del conductor (Fase 2)
   globals.css             → estilos globales Tailwind
 proxy.ts                  → refresco de sesión Supabase (convención proxy de Next 16)
 
@@ -118,6 +121,11 @@ components/
   DriverProfileButton.tsx → botón de perfil arriba de la página
   AccountButton.tsx       → sesión: Entrar / correo + Salir (Fase 1)
   LoginForm.tsx           → formulario de enlace mágico (Fase 1)
+  DriverCard.tsx          → tarjeta del listado público (Fase 2)
+  DriverRating.tsx        → valoración en estrellas (Fase 2)
+  DriverProfileForm.tsx   → formulario de la ficha pública (Fase 2)
+  ReviewList.tsx          → lista de reseñas (Fase 2)
+  ReviewForm.tsx          → formulario de reseña (Fase 2)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -130,6 +138,9 @@ lib/
   driverProfile.ts        → gestión del perfil en localStorage
   mapConfig.ts            → constantes de altura del mapa
   utils.ts                → utilidades (cn de shadcn)
+  validation.ts           → esquemas Zod (frontera de seguridad) (Fase 2)
+  drivers.ts              → lecturas públicas de conductores/reseñas (Fase 2)
+  actions/drivers.ts      → Server Actions: publicar ficha y reseñar (Fase 2)
   supabase/
     config.ts             → URL/anon key y bandera isSupabaseConfigured (Fase 1)
     client.ts             → cliente browser singleton (Fase 1)
@@ -287,6 +298,21 @@ public/                   → assets estáticos
   de `rating_avg`/`rating_count`. PostGIS (`location` geográfico) preparado para la Fase 3.
 - Decisión: el `DriverProfile` **sigue en localStorage**; la migración a la nube se pospone.
 - Pendiente de esta fase (deuda): CSP con nonces cuando haya más superficie dinámica.
+
+### Fase 2 — Perfiles públicos y reseñas ✅
+- Rutas: `/conductores` (listado), `/conductores/[id]` (perfil + reseñas) y `/panel` (publicar/editar
+  la ficha del conductor). Todas dinámicas (leen la base con la sesión).
+- Datos: `lib/drivers.ts` (lecturas) con consultas planas combinadas en memoria para no depender de
+  la inferencia de *joins*. Escritura con **Server Actions** (`lib/actions/drivers.ts`).
+- Seguridad: **Zod** (`lib/validation.ts`) valida todo input; la sesión se resuelve en el servidor;
+  RLS como última barrera. Reseñas: 1 por cliente/conductor, sin autoevaluación, y un trigger
+  recalcula `rating_avg`/`rating_count`.
+- Se eliminó `app/loading.tsx`: el límite de streaming raíz convertía los 404/redirects en 200. Ahora
+  `/conductores/[id]` inexistente devuelve **404** y `/panel` sin sesión **307 → /login**.
+- Bug de configuración detectado y blindado: si `NEXT_PUBLIC_SUPABASE_URL` trae `/rest/v1/`, el SDK
+  duplicaba la ruta; `lib/supabase/config.ts` la normaliza (y se corrigió el `.env.local`).
+- Pendiente: subir foto de perfil (Storage), editar/borrar reseña desde la UI y geolocalización de
+  cercanía (Fase 3).
 
 ---
 
