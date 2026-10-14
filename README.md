@@ -459,6 +459,8 @@ vehículo y tarifas, con un interruptor de visibilidad). Los clientes ven el **l
 - **Conductores cercanos** (P6): `/conductores` ofrece "Buscar cerca de mí" (pide el GPS al pulsar) y
   consulta la RPC PostGIS `nearby_drivers` (`0006_nearby.sql`), que ordena por distancia y devuelve la
   **coordenada aproximada** (redondeada), nunca la exacta.
+- **Reseñas y antiabuso** (P7): cada reseña se puede reportar (lo revisa el admin) y hay un **límite de
+  5 reseñas por cuenta cada 24 h**, comprobado en el servidor.
 
 ## Confianza y moderación (T)
 

@@ -1,4 +1,5 @@
 import { Star } from "lucide-react";
+import ReportButton from "@/components/ReportButton";
 import { cn } from "@/lib/utils";
 import type { PublicReview } from "@/lib/drivers";
 
@@ -15,7 +16,14 @@ function formatDate(iso: string): string {
     : iso;
 }
 
-export default function ReviewList({ reviews }: { reviews: PublicReview[] }) {
+export default function ReviewList({
+  reviews,
+  isAuthenticated,
+}: {
+  reviews: PublicReview[];
+  /** Si hay sesión, cada reseña ofrece reportarla (P7). */
+  isAuthenticated: boolean;
+}) {
   if (reviews.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -51,6 +59,13 @@ export default function ReviewList({ reviews }: { reviews: PublicReview[] }) {
           {review.comment.length > 0 && (
             <p className="mt-1.5 text-sm text-muted-foreground">{review.comment}</p>
           )}
+          <div className="mt-2 flex justify-end">
+            <ReportButton
+              targetType="review"
+              targetId={review.id}
+              isAuthenticated={isAuthenticated}
+            />
+          </div>
         </li>
       ))}
     </ul>

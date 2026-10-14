@@ -158,7 +158,7 @@ export default async function DriverDetailPage({ params }: { params: Promise<{ i
           <h2 className="text-sm font-semibold text-foreground">
             Reseñas {driver.ratingCount > 0 ? `(${driver.ratingCount})` : ""}
           </h2>
-          <ReviewList reviews={reviews} />
+          <ReviewList reviews={reviews} isAuthenticated={isAuthenticated} />
           <div className="rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
             <ReviewForm driverId={driver.id} isAuthenticated={isAuthenticated} />
           </div>

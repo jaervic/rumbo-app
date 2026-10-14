@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P6 (conductores cercanos con PostGIS)
+**Última actualización:** P7 (reseñas: reporte y límites)
 
 ---
 
@@ -354,6 +354,12 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### P7 — Reseñas: reporte y límites ✅
+- `submitReview`: **límite anti-abuso** de 5 reseñas por cuenta cada 24 h (comprobado en el servidor).
+- Cada reseña lleva su propio `ReportButton` (`target_type = 'review'`); `ReviewList` recibe
+  `isAuthenticated`. El admin los ve y resuelve en `/admin`.
+- (La verificación de email es inherente al enlace mágico; no hay KYC.)
 
 ### P6 — Conductores cercanos (PostGIS) ✅
 - Migración `0006_nearby.sql`: RPC `nearby_drivers(lat,lng,radio,limit)` `security definer` (puede leer

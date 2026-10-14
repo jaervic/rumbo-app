@@ -159,6 +159,18 @@ export async function submitReview(input: unknown): Promise<ActionResult> {
     return { ok: false, error: "Debes iniciar sesión." };
   }
 
+  // Límite anti-abuso (P7): máximo 5 reseñas en 24 h por cuenta.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from("reviews")
+    .select("id", { count: "exact", head: true })
+    .eq("customer_id", auth.user.id)
+    .gte("created_at", since);
+
+  if ((count ?? 0) >= 5) {
+    return { ok: false, error: "Has alcanzado el límite de reseñas por hoy. Inténtalo mañana." };
+  }
+
   // La RLS comprueba que el conductor esté activo y que no te estés reseñando a ti mismo.
   const { error } = await supabase.from("reviews").insert({
     driver_id: data.driverId,
