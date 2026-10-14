@@ -277,10 +277,22 @@ La marca es **Rumbo**. El sistema visual vive en `app/globals.css`:
   pestaña activa y `backdrop-blur`. Oculta en `/login` y en escritorio.
 - **`/cuenta`**: destino de la pestaña Cuenta; muestra la sesión, el perfil de cotización
   (`DriverProfileButton`), el acceso al panel público y el cierre de sesión.
-- El layout reserva `pb-20` en móvil para que la barra no tape el contenido.
+- Cada página reserva `pb-24` en móvil (`md:pb-8`) para que la barra no tape el contenido; así el
+  login (sin shell) queda centrado.
 
-Pendiente (D3–D5): pulido de componentes y estados (skeletons, *empty states*), logo/iconos/manifest
-y auditoría de rendimiento/accesibilidad.
+### Pulido de componentes y estados (D3)
+
+- **Esqueleto** del listado (`DriverGridSkeleton`) dentro de un `Suspense` en `/conductores`: la
+  cabecera se pinta al instante y la lista se rellena. El boundary va SOLO alrededor de la lista (no
+  un `loading.tsx` de directorio) para no romper el 404 de `/conductores/[id]`.
+- **Estados vacíos** reutilizables (`EmptyState`) con icono, explicación y CTA (p. ej. "Publicar mi
+  perfil" cuando no hay conductores).
+- **Feedback unificado** (`InlineMessage`): éxito/error/info con la misma caja y color de token en
+  todos los formularios.
+- `DriverCard` con avatar de iniciales y jerarquía mejorada; páginas sin doble scroll (se sustituyó
+  `min-h-dvh` por `flex-1` bajo el header).
+
+Pendiente (D4–D5): logo/iconos/manifest/OG y auditoría de rendimiento/accesibilidad.
 
 ## Cómo correr en local
 

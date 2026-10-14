@@ -14,6 +14,7 @@ import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import InlineMessage from "@/components/InlineMessage";
 import {
   Select,
   SelectContent,
@@ -217,14 +218,7 @@ export default function DriverProfileForm({ initial }: DriverProfileFormProps) {
       </section>
 
       {message !== null && (
-        <p
-          role="status"
-          className={
-            succeeded ? "text-sm text-success" : "text-sm text-destructive"
-          }
-        >
-          {message}
-        </p>
+        <InlineMessage variant={succeeded ? "success" : "error"}>{message}</InlineMessage>
       )}
 
       <Button type="submit" className="min-h-12 w-full text-base font-semibold" disabled={pending}>

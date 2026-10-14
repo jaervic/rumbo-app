@@ -12,6 +12,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import InlineMessage from "@/components/InlineMessage";
 import { cn } from "@/lib/utils";
 import { submitReview } from "@/lib/actions/drivers";
 
@@ -31,21 +32,17 @@ export default function ReviewForm({ driverId, isAuthenticated }: ReviewFormProp
 
   if (!isAuthenticated) {
     return (
-      <p className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+      <InlineMessage variant="info">
         <Link href="/login" className="font-medium text-foreground underline underline-offset-4">
           Inicia sesión
         </Link>{" "}
         para dejar una reseña.
-      </p>
+      </InlineMessage>
     );
   }
 
   if (succeeded) {
-    return (
-      <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm text-success">
-        ¡Gracias! Tu reseña se publicó.
-      </p>
-    );
+    return <InlineMessage variant="success">¡Gracias! Tu reseña se publicó.</InlineMessage>;
   }
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -106,11 +103,7 @@ export default function ReviewForm({ driverId, isAuthenticated }: ReviewFormProp
         />
       </div>
 
-      {message !== null && (
-        <p className="text-xs text-destructive" role="alert">
-          {message}
-        </p>
-      )}
+      {message !== null && <InlineMessage variant="error">{message}</InlineMessage>}
 
       <Button type="submit" className="min-h-11 w-full font-semibold" disabled={pending}>
         {pending ? (

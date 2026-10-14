@@ -7,7 +7,7 @@ import { MapPinOff } from "lucide-react";
 
 export default function NotFound() {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+    <main className="flex flex-1 flex-col items-center justify-center gap-4 bg-background px-6 text-center">
       <MapPinOff className="size-8 text-muted-foreground" aria-hidden="true" />
       <div className="space-y-1">
         <h1 className="text-lg font-semibold text-foreground">Página no encontrada</h1>

@@ -140,7 +140,7 @@ export default function Home() {
   );
 
   return (
-    <main className="min-h-dvh bg-background px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 lg:px-8">
+    <main className="flex-1 bg-background px-4 pt-6 pb-24 sm:px-6 sm:pt-8 md:pb-8 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6 sm:space-y-8">
         {/* Tipografía escalonada: en móvil 320px un h1 de 3xl parte el título en 3 líneas. */}
         {/* Barra superior: el perfil del conductor va arriba a la derecha (Fase 6.2). No se renderiza

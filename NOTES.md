@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** D2 (shell móvil: header, barra inferior y cuenta)
+**Última actualización:** D3 (pulido de componentes y estados)
 
 ---
 
@@ -131,6 +131,9 @@ components/
   SiteHeader.tsx          → cabecera sticky con marca + cuenta (D2)
   BottomNav.tsx           → barra inferior móvil de 4 pestañas (D2)
   SignOutButton.tsx       → cerrar sesión, para /cuenta (D2)
+  InlineMessage.tsx       → feedback unificado éxito/error/info (D3)
+  EmptyState.tsx          → estado vacío con icono, texto y CTA (D3)
+  DriverGridSkeleton.tsx  → esqueleto del listado de conductores (D3)
   ui/                     → componentes de shadcn/ui
 
 lib/
@@ -345,6 +348,16 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### D3 — Pulido de componentes y estados ✅
+- `components/InlineMessage.tsx`: caja única de feedback (success/error/info) con tokens; adoptada en
+  `ReviewForm` y `DriverProfileForm` (antes cada una tenía su color).
+- `components/EmptyState.tsx` + `components/DriverGridSkeleton.tsx`: estados vacíos con CTA y esqueleto
+  del listado. `/conductores` usa un `Suspense` SOLO alrededor de la lista (no `loading.tsx`, que
+  habría envuelto también el detalle y roto su 404).
+- `DriverCard` rediseñada: avatar de iniciales, jerarquía nombre→vehículo→valoración, `active:scale`.
+- Corrección de layout: `min-h-dvh` → `flex-1` en todas las páginas para evitar el doble scroll bajo
+  el header; el alto de la barra inferior se reserva con `pb-24 md:pb-8` por página.
 
 ---
 

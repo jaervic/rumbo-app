@@ -1,24 +1,29 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowLeft, Users } from "lucide-react";
+import { ArrowLeft, UserPlus, Users } from "lucide-react";
 import DriverCard from "@/components/DriverCard";
+import DriverGridSkeleton from "@/components/DriverGridSkeleton";
+import EmptyState from "@/components/EmptyState";
 import { listVisibleDrivers } from "@/lib/drivers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const metadata: Metadata = {
-  title: "Conductores · Cotizador de Transporte",
+  title: "Conductores · Rumbo",
   description: "Conoce a los conductores disponibles, su vehículo y sus valoraciones.",
 };
 
 /**
- * Listado público de conductores (Fase 2). Página dinámica (lee la base con la sesión/cookies), con
- * el cotizador intacto: aquí solo se consulta.
+ * Listado público de conductores (Fase 2). La cabecera se pinta al instante y la lista se resuelve
+ * dentro de un `Suspense` con esqueleto (D3): navegar a esta pantalla se siente inmediato.
+ *
+ * No se usa `loading.tsx`: un boundary a nivel de directorio envolvería también a `/conductores/[id]`
+ * y convertiría su 404 en un 200 por streaming. El `Suspense` va SOLO alrededor de la lista, donde el
+ * 200 es correcto.
  */
-export default async function DriversPage() {
-  const drivers = isSupabaseConfigured ? await listVisibleDrivers() : [];
-
+export default function DriversPage() {
   return (
-    <main className="min-h-dvh bg-background px-4 py-8 sm:px-6 lg:px-8">
+    <main className="flex-1 bg-background px-4 pt-8 pb-24 sm:px-6 md:pb-8 lg:px-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <Link
           href="/"
@@ -38,22 +43,49 @@ export default async function DriversPage() {
           </p>
         </header>
 
-        {!isSupabaseConfigured ? (
-          <p className="rounded-lg border border-border bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
-            El listado estará disponible cuando se configure Supabase.
-          </p>
-        ) : drivers.length === 0 ? (
-          <p className="rounded-lg border border-border bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
-            Todavía no hay conductores publicados.
-          </p>
+        {isSupabaseConfigured ? (
+          <Suspense fallback={<DriverGridSkeleton />}>
+            <DriverList />
+          </Suspense>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {drivers.map((driver) => (
-              <DriverCard key={driver.id} driver={driver} />
-            ))}
-          </div>
+          <EmptyState
+            icon={Users}
+            title="El listado estará disponible pronto"
+            description="Cuando la base de datos esté configurada aquí verás los conductores publicados."
+          />
         )}
       </div>
     </main>
+  );
+}
+
+/** Lista real (asíncrona): se resuelve en el servidor dentro del boundary de Suspense. */
+async function DriverList() {
+  const drivers = await listVisibleDrivers();
+
+  if (drivers.length === 0) {
+    return (
+      <EmptyState
+        icon={UserPlus}
+        title="Todavía no hay conductores publicados"
+        description="Sé el primero: publica tu ficha y aparecerás aquí para que los clientes te encuentren."
+        action={
+          <Link
+            href="/panel"
+            className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            Publicar mi perfil
+          </Link>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {drivers.map((driver) => (
+        <DriverCard key={driver.id} driver={driver} />
+      ))}
+    </div>
   );
 }
