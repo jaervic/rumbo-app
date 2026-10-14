@@ -1,0 +1,15 @@
+# Enlaces de donación voluntaria. GitHub muestra el botón "Sponsor" con lo que
+# descomentes aquí.
+#
+# IMPORTANTE (privacidad): NO pongas datos personales (número de teléfono, cédula).
+# Para Zelle/Pago Móvil usa un alias o correo del proyecto y compártelos "a solicitud".
+#
+# Descomenta y rellena SOLO las plataformas que uses:
+
+# github: [tu-usuario]
+# open_collective: rumbo
+# ko_fi: tu-usuario
+
+# Cripto no tiene campo propio en GitHub: se enlaza desde `custom` (máx. 4 URLs).
+# Lo más limpio es enlazar a la sección de donaciones del README.
+# custom: ["https://github.com/jaervic/proyectotransporte#donaciones"]

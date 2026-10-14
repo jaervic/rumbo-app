@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** P3 (privacidad de la ubicación)
+**Última actualización:** G1 (base open source: licencia, docs y donaciones)
 
 ---
 
@@ -350,6 +350,14 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### G1 — Base open source ✅
+- `LICENSE` (**MIT**), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) y
+  `SECURITY.md`.
+- `.github/FUNDING.yml` con **placeholders comentados** (GitHub Sponsors, Open Collective, Ko-fi y
+  cripto por `custom`). Sin datos personales: Zelle/Pago Móvil se comparten "a solicitud" por correo
+  del proyecto.
+- `README.md`: secciones de **Donaciones** y **Self-hosting** (Supabase propio + variables + migración).
 
 ### P3 — Privacidad de la ubicación ✅
 - `supabase/migrations/0003_location_privacy.sql`: revoca `select (location)` a `anon`/`authenticated`

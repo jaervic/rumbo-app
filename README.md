@@ -483,8 +483,36 @@ A partir de ahí el **deploy es automático**:
 ## Licencia y proyecto open source
 
 Rumbo es **open source bajo licencia MIT** (ver `LICENSE`): puedes usarlo, modificarlo y desplegarlo
-libremente. El proyecto **no cobra suscripciones**; se sostiene con **donaciones voluntarias** (los
-enlaces se publican en la sección de donaciones, sin datos personales). Para
-desplegar tu propia instancia necesitas tu propio proyecto de Supabase y tus variables de entorno
-(ver *Variables de entorno*).
+libremente. El proyecto **no cobra suscripciones**; se sostiene con **donaciones voluntarias**. Se
+agradecen los aportes de código y de ideas (ver `CONTRIBUTING.md`).
+
+## Donaciones
+
+Rumbo es gratuito y no tiene planes de pago. Si quieres apoyarlo:
+
+| Vía | Enlace |
+| --- | --- |
+| GitHub Sponsors | _pendiente de configurar_ (`FUNDING.yml`) |
+| Open Collective | _pendiente de configurar_ |
+| Ko-fi | _pendiente de configurar_ |
+| Cripto (USDT TRC20) | _pendiente de configurar_ |
+
+> **Privacidad**: por seguridad, **no se publican números de teléfono ni datos personales**. Si
+> quieres donar por **Zelle** o **Pago Móvil** (Venezuela), escríbenos a un correo del proyecto y te
+> damos los datos **a solicitud**.
+
+## Self-hosting
+
+Cualquiera puede desplegar su propia instancia:
+
+1. Crea un proyecto en [Supabase](https://supabase.com/) y anota `URL` y `anon key`.
+2. Clona el repo e instala: `npm install`.
+3. Copia `.env.local.example` a `.env.local` y rellena `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` y (opcional) `NEXT_PUBLIC_SITE_URL`.
+4. Aplica el esquema: `npx supabase link --project-ref <ref>` y `npm run db:push`.
+5. En Supabase → *Authentication → URL Configuration*, añade tu dominio y `/auth/callback` a las
+   *Redirect URLs*.
+6. `npm run dev` (local) o despliega en Vercel (ver *Deploy en Vercel*).
+
+Sin Supabase, el cotizador funciona igual: solo se desactivan auth, perfiles y reseñas.
 
