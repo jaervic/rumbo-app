@@ -76,11 +76,28 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+
+        {/* Enlace de salto para teclado/lector de pantalla (D5): invisible hasta recibir el foco. */}
+        <a
+          href="#contenido"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[2000] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+        >
+          Saltar al contenido
+        </a>
+
+        {/* Precarga de los orígenes externos (D5): ahorra el handshake DNS/TLS de Photon (direcciones),
+            OSRM (rutas) y los tiles del mapa, que se usan nada más abrir. */}
+        <link rel="preconnect" href="https://photon.komoot.io" />
+        <link rel="preconnect" href="https://router.project-osrm.org" />
+        <link rel="preconnect" href="https://a.tile.openstreetmap.org" />
+
         {/* Shell global (D2): cabecera pegada arriba y barra inferior en móvil. El espacio para la
             barra inferior lo reserva cada página con `pb-24 md:pb-8`, para no descentrar las que no
-            llevan shell (login). */}
+            llevan shell (login). `#contenido` es el destino del enlace de salto. */}
         <SiteHeader />
-        <div className="flex flex-1 flex-col">{children}</div>
+        <div id="contenido" tabIndex={-1} className="flex flex-1 flex-col outline-none">
+          {children}
+        </div>
         <BottomNav />
       </body>
     </html>

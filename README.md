@@ -304,7 +304,16 @@ La marca es **Rumbo**. El sistema visual vive en `app/globals.css`:
 - **Open Graph** (`app/opengraph-image.tsx`, con `ImageResponse`): imagen de 1200×630 para compartir
   enlaces. `metadataBase` se toma de `NEXT_PUBLIC_SITE_URL`.
 
-Pendiente (D5): auditoría de rendimiento y accesibilidad.
+### Rendimiento, SEO y accesibilidad (D5)
+
+- **`app/robots.ts`** y **`app/sitemap.ts`**: se indexa la parte pública (incluidos los perfiles de
+  conductores visibles, leídos con un cliente sin cookies) y se excluyen las zonas con sesión.
+- **`lib/supabase/public.ts`**: cliente anónimo (`persistSession: false`) para contextos sin petición
+  (sitemap), respetando RLS.
+- **Accesibilidad**: enlace "Saltar al contenido" (`#contenido`), orígenes `preconnect`
+  (Photon/OSRM/tiles) para acelerar la primera carga, y **reducción global de movimiento** con
+  `prefers-reduced-motion`.
+- Contraste pensado para **WCAG AA** en claro y oscuro; foco visible en todos los controles.
 
 ## Cómo correr en local
 

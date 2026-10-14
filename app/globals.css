@@ -241,4 +241,18 @@
     animation: none;
     opacity: 0.35;
   }
+
+  /*
+   * Reducción global de movimiento (D5): desactiva transiciones y animaciones de toda la app para
+   * quien tenga la preferencia activada (accesibilidad vestibular). No se usa `display:none`: solo
+   * se acorta la duración, así los estados finales siguen aplicándose.
+   */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

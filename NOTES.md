@@ -4,7 +4,7 @@
 > en Cline o DeepSeek, pega este archivo como contexto inicial. Actualízalo 
 > cuando cambies algo estructural, no en cada micro-cambio.
 
-**Última actualización:** D4 (marca e iconos de app)
+**Última actualización:** D5 (rendimiento, SEO y accesibilidad)
 
 ---
 
@@ -349,6 +349,13 @@ public/                   → assets estáticos
   vive en la barra inferior). Se eliminó el CTA sticky previsto: chocaría con la barra inferior; el
   botón "Ver precio estimado" del formulario sigue llevando a la tarjeta.
 - z-index acordado: header 1130, barra inferior 1140, panel de perfil 1150/1160, popups de Select 1200.
+
+### D5 — Rendimiento, SEO y accesibilidad ✅
+- `app/robots.ts` y `app/sitemap.ts` (perfiles visibles vía `lib/supabase/public.ts`, cliente anónimo
+  sin cookies; `try/catch` para no romper el build sin base). `NEXT_PUBLIC_SITE_URL` fija el dominio.
+- Accesibilidad: enlace "Saltar al contenido" (`#contenido`), `preconnect` a Photon/OSRM/tiles y
+  reducción global de `prefers-reduced-motion`. Contraste orientado a WCAG AA.
+- Cierra el plan de diseño D1–D5.
 
 ### D4 — Marca y app móvil ✅
 - `components/Logo.tsx`: marca Rumbo (pin sobre insignia) con tokens; usada en `SiteHeader`.
